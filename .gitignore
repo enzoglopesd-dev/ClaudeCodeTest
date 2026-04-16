@@ -34,5 +34,5 @@ __pycache__/
 venv/
 .venv/
 
-# Claude Code local settings
+# Claude Code local settings (personal overrides, not shared)
 .claude/settings.local.json
