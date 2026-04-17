@@ -1,0 +1,292 @@
+{
+  "version": "2.0",
+  "last_updated": "2026-04-17",
+  "trader": "enzoglopesd-dev",
+
+  "prop_firm": {
+    "name": "My Trading Futures",
+    "account_size": 25000,
+    "profit_target": 1500,
+    "max_total_loss": 1000,
+    "account_floor": 24000,
+    "drawdown_type": "EOD_trailing",
+    "notes": "Nunca deixar a conta cair abaixo de $24.000. Drawdown acompanha os ganhos — quanto mais a conta cresce, mais o floor sobe."
+  },
+
+  "risk_management": {
+    "max_risk_per_trade_usd": 60,
+    "max_risk_per_trade_pct": 0.24,
+    "max_daily_loss_usd": 200,
+    "max_daily_loss_pct": 0.8,
+    "daily_profit_target_usd": 200,
+    "max_trades_per_day": 5,
+    "max_contracts": 2,
+    "starting_contracts": 1,
+    "scale_to_2_contracts_after_buffer_usd": 500,
+    "stop_trading_after_consecutive_losses": 3,
+    "risk_reward_minimum": 2.0,
+    "notes": [
+      "Risco máximo por trade: $60 (30 pontos no MNQ = $60 com 1 contrato)",
+      "Após acumular $500 de lucro, pode usar 2 contratos MNQ",
+      "Ao atingir $1.300 de lucro, REDUZIR para 1 contrato e operar só setups A+",
+      "3 perdas consecutivas = parar o dia, sem exceção",
+      "Nunca mover o stop para perto apenas porque o preço se aproxima — respeite o plano"
+    ]
+  },
+
+  "account_milestones": {
+    "milestone_1": {
+      "balance": 25500,
+      "action": "Operando normalmente. Buffer de $500 construído. Pode escalar para 2 contratos."
+    },
+    "milestone_2": {
+      "balance": 26000,
+      "action": "Metade do objetivo. Reduzir drawdown diário para $150. Continuar com disciplina."
+    },
+    "milestone_3": {
+      "balance": 26300,
+      "action": "ALERTA: Dentro de $200 do alvo. Reduzir para 1 contrato, só setups A+, RR mínimo 3:1."
+    },
+    "milestone_4": {
+      "balance": 26500,
+      "action": "OBJETIVO ATINGIDO. Parar de operar e submeter para aprovação."
+    },
+    "red_zone": {
+      "balance": 24300,
+      "action": "PERIGO: Apenas $300 acima do floor. Parar IMEDIATAMENTE. Não operar por 1 dia."
+    }
+  },
+
+  "trading_sessions": {
+    "preferred": [
+      {
+        "name": "NY AM Session (Kill Zone Principal)",
+        "time_est": "09:30 - 11:30",
+        "description": "Melhor sessão para MNQ. Alta liquidez, movimentos claros, maior assertividade."
+      },
+      {
+        "name": "London Open Kill Zone",
+        "time_est": "03:00 - 05:00",
+        "description": "Segunda melhor sessão. Boa para quem opera de manhã cedo."
+      }
+    ],
+    "avoid": [
+      {
+        "name": "Almoco NY",
+        "time_est": "11:30 - 13:30",
+        "reason": "Baixo volume, movimentos falsos, armadilhas frequentes."
+      },
+      {
+        "name": "Pré-abertura",
+        "time_est": "00:00 - 03:00",
+        "reason": "Liquidez muito baixa, spreads altos."
+      },
+      {
+        "name": "Sexta-feira após 11h",
+        "time_est": "11:00+",
+        "reason": "Mercado fecha posições para o fim de semana. Movimentos não confiáveis."
+      }
+    ],
+    "no_trade_events": [
+      "CPI (Consumer Price Index)",
+      "FOMC Interest Rate Decision",
+      "NFP (Non-Farm Payrolls)",
+      "FOMC Minutes",
+      "GDP Release"
+    ]
+  },
+
+  "market_structure_analysis": {
+    "timeframes": {
+      "higher": "1H ou 4H",
+      "execution": "10 min (timeframe atual)",
+      "entry": "3 min ou 1 min"
+    },
+    "pre_trade_checklist": [
+      "1. No 1H: Qual é a tendência dominante? (BOS de alta = bullish, BOS de baixa = bearish)",
+      "2. O preço está acima ou abaixo do VWAP? (Acima = viés comprador, Abaixo = viés vendedor)",
+      "3. Existe um Order Block ou FVG relevante próximo ao preço?",
+      "4. A EMA 9 e EMA 20 estão alinhadas com a direção do trade?",
+      "5. O MACD está na direção do trade?",
+      "6. O RSI está em zona neutra (30-70)? Evitar entrar se estiver extremo.",
+      "7. Algum evento de alto impacto nas próximas 2 horas?"
+    ]
+  },
+
+  "entry_strategy": {
+    "name": "ICT + LuxAlgo Confluence Model",
+    "setup_quality": {
+      "A_plus": {
+        "description": "Setup ideal — todos os critérios alinhados",
+        "criteria": [
+          "Tendência 1H clara (BOS confirmado pelo Smart Money Concepts)",
+          "Preço sweepou um nível de liquidez (topo/fundo anterior)",
+          "Market Structure Shift (MSS/CHoCH) visível no 10min",
+          "Entrada em FVG ou Order Block na direção do sweep",
+          "VWAP alinhado com a direção",
+          "EMAs 9 e 20 na direção do trade",
+          "UT Bot Alert confirmando"
+        ],
+        "max_risk": 60,
+        "contracts": 2
+      },
+      "A": {
+        "description": "Setup bom — maioria dos critérios alinhados",
+        "criteria": [
+          "Estrutura clara no 10min",
+          "FVG ou Order Block como zona de entrada",
+          "VWAP alinhado",
+          "Pelo menos 4 de 7 critérios do A+ presentes"
+        ],
+        "max_risk": 60,
+        "contracts": 1
+      },
+      "B": {
+        "description": "Setup fraco — NÃO OPERAR. Aguardar melhor oportunidade.",
+        "criteria": ["Menos de 4 critérios alinhados"],
+        "action": "SKIP — sentar na mão e esperar"
+      }
+    },
+
+    "entry_model_long": {
+      "name": "ICT Sweep & Reverse — Compra",
+      "steps": [
+        "1. Identificar mínima recente relevante (liquidity pool abaixo)",
+        "2. Aguardar sweep dessa mínima (fake breakout abaixo)",
+        "3. Confirmar reversão: candle de absorção ou engolfo bullish",
+        "4. MSS no 10min: candle fecha acima do último topo de curto prazo",
+        "5. Entrar no reteste do FVG ou OB bullish mais próximo",
+        "6. Stop: abaixo do ponto mais baixo do sweep (+ 2 pontos de buffer)",
+        "7. Alvo 1 (50% da posição): próximo nível de resistência ou VWAP",
+        "7. Alvo 2 (50% restante): próxima zona de liquidez / Order Block acima"
+      ]
+    },
+
+    "entry_model_short": {
+      "name": "ICT Sweep & Reverse — Venda",
+      "steps": [
+        "1. Identificar máxima recente relevante (liquidity pool acima)",
+        "2. Aguardar sweep dessa máxima (fake breakout acima)",
+        "3. Confirmar reversão: candle de rejeição bearish ou engolfo bearish",
+        "4. MSS no 10min: candle fecha abaixo do último fundo de curto prazo",
+        "5. Entrar no reteste do FVG ou OB bearish mais próximo",
+        "6. Stop: acima do ponto mais alto do sweep (+ 2 pontos de buffer)",
+        "7. Alvo 1 (50% da posição): próximo nível de suporte ou VWAP",
+        "7. Alvo 2 (50% restante): próxima zona de liquidez / Order Block abaixo"
+      ]
+    }
+  },
+
+  "stop_loss_rules": {
+    "placement": "Sempre estrutural — abaixo/acima do sweep candle, nunca em número redondo arbitrário",
+    "max_stop_points": 30,
+    "buffer_points": 2,
+    "no_stop_below_points": 10,
+    "stop_movement_rules": [
+      "NUNCA mover stop para perto no meio do trade por ansiedade",
+      "Só mover stop para breakeven depois que Alvo 1 for atingido",
+      "Depois do breakeven, só mover stop junto com a estrutura (último topo/fundo)"
+    ]
+  },
+
+  "position_management": {
+    "partial_profit_at_target_1": true,
+    "partial_profit_pct": 50,
+    "move_stop_to_breakeven_after_target_1": true,
+    "let_runner_go_to_target_2": true,
+    "trailing_stop_on_runner": "Mover stop abaixo/acima de cada novo topo/fundo confirmado"
+  },
+
+  "indicators_usage": {
+    "VWAP": "Viés direcional. Acima = bullish, Abaixo = bearish. Respeitar como suporte/resistência.",
+    "Smart_Money_Concepts_LuxAlgo": "BOS confirma tendência. CHoCH sinaliza possível reversão. Base da análise estrutural.",
+    "Order_Block_Detector": "Zonas de entrada prioritárias. Entrar apenas em OBs na direção do BOS.",
+    "FVG_iFVG": "Zonas de desequilíbrio — alta probabilidade de preenchimento. Usar como alvo ou entrada.",
+    "EMA_9": "Momentum de curtíssimo prazo. Preço acima = pressão compradora ativa.",
+    "EMA_20": "Tendência intraday. Cruzamento 9x20 = sinal de momentum.",
+    "EMA_50": "Tendência de médio prazo. Suporte/resistência dinâmico.",
+    "EMA_200": "Tendência maior. Nunca operar contra a EMA 200 sem confluência muito forte.",
+    "RSI_Divergence": "Divergência bullish/bearish = alerta de reversão. RSI >70 = evitar compras, <30 = evitar vendas.",
+    "MACD": "Confirmação de força. Histograma crescendo na direção do trade = sinal mais forte.",
+    "UT_Bot_Alerts": "Confirmação de entrada. Usar como gatilho final quando outros critérios já estão alinhados.",
+    "Protected_Swings": "Definir stop loss abaixo/acima do swing protegido mais recente.",
+    "Opening_Range": "Breakout do range de abertura = trade de alta probabilidade nas primeiras 2h.",
+    "SMT_Divergence": "Se NQ e ES divergem, cuidado — movimento pode ser falso. Aguardar realinhamento.",
+    "Support_Resistance_HVN": "Zonas de alto volume = magnetos de preço. Usar como alvos.",
+    "Midnight_Open": "Nível 00:00 NY = referência ICT importante. Rejeição nesse nível = setup válido.",
+    "ICT_Seek_Destroy": "Perfil de liquidez — ver onde stops estão concentrados. Mercado vai buscar essas regiões.",
+    "Deviation_Trend_Profile": "Extensões de desvio — targets além do range normal quando há momentum forte."
+  },
+
+  "psychological_rules": {
+    "rules": [
+      "NUNCA aumentar risco para recuperar perda do dia — isso mata contas",
+      "NUNCA operar por FOMO (medo de perder movimento) — sempre há outro setup",
+      "Após atingir $200 de lucro no dia, operar APENAS setups A+",
+      "Após 3 perdas no dia, FECHAR O COMPUTADOR — o mercado estará lá amanhã",
+      "Manter um diário de trades: anotar entrada, saída, motivo, resultado e emoções",
+      "Nunca operar com raiva, medo ou euforia — estado emocional neutro é obrigatório",
+      "O objetivo não é ganhar todo dia — é não perder a conta e bater o alvo em 10-15 dias"
+    ]
+  },
+
+  "daily_routine": {
+    "pre_market": [
+      "Verificar calendário econômico (evitar dias de CPI, FOMC, NFP)",
+      "Marcar níveis: VWAP do dia anterior, máxima/mínima da semana, Opening Range potencial",
+      "Identificar Order Blocks e FVGs relevantes no 1H",
+      "Definir viés do dia (bullish/bearish) com base na estrutura",
+      "Definir: qual o máximo que posso perder hoje? ($200) — aceitar isso antes de começar"
+    ],
+    "during_trading": [
+      "Operar APENAS dentro das Kill Zones definidas",
+      "Esperar pelo setup — não forçar trades",
+      "Registrar cada trade no diário",
+      "Monitorar P&L: parar ao atingir +$200 ou -$200"
+    ],
+    "post_market": [
+      "Revisar todos os trades do dia",
+      "Anotar o que funcionou e o que não funcionou",
+      "Calcular P&L acumulado vs. meta da mesa",
+      "Planejar o próximo dia"
+    ]
+  },
+
+  "prop_firm_specific_rules": {
+    "pace_strategy": {
+      "days_to_complete": 10,
+      "daily_target_usd": 150,
+      "description": "Atingir $1.500 em 10 dias operando com calma. Média de $150/dia é suficiente."
+    },
+    "drawdown_protection": {
+      "rule": "Nunca arriscar mais de 20% do drawdown disponível em um único dia",
+      "calculation": "Se drawdown disponível é $1.000, o máximo por dia é $200",
+      "trailing_awareness": "Se conta subir para $25.500, o floor também sobe. Recalcular daily loss limit."
+    },
+    "consistency_rule": {
+      "description": "Muitas mesas têm regra de consistência (maior dia não pode ser >40-50% do lucro total)",
+      "rule": "Nunca tentar fazer mais de $400 em um único dia mesmo que esteja em flow",
+      "reason": "Violar a consistência anula a aprovação mesmo com lucro total atingido"
+    },
+    "forbidden_actions": [
+      "Não usar Expert Advisors (EAs) ou bots automatizados",
+      "Não operar durante notícias de alto impacto",
+      "Não manter posição abertas durante o fim de semana",
+      "Não usar estratégias de martingale ou averaging down",
+      "Não ignorar o daily loss limit — uma vez atingido, encerrar tudo imediatamente"
+    ]
+  },
+
+  "mnq_contract_specs": {
+    "symbol": "CME_MINI:MNQ1!",
+    "tick_size": 0.25,
+    "tick_value_usd": 0.50,
+    "point_value_usd": 2.00,
+    "examples": {
+      "30_point_stop_1_contract": "$60 de risco",
+      "30_point_stop_2_contracts": "$120 de risco",
+      "60_point_target_1_contract": "$120 de lucro",
+      "2_to_1_rr_30pt_stop": "Target: 60 pontos = $120 com 1 contrato"
+    }
+  }
+}
