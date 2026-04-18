@@ -1,0 +1,120 @@
+//@version=6
+// MNQ Rules v3.0 — ICT Sweep & Reverse Strategy
+// Author: enzog.lopesd@gmail.com
+// Account: My Trading Futures $25K | Max Loss: $1,000 | Target: $1,500
+// Daily: Max loss $150, Target $150-200 | Best-of-3 system (max 3 trades, stop after 2 losses)
+//
+// Entry Model: Liquidity Sweep + Reversal during NY AM Kill Zone (9:30–11:30 ET)
+// Risk: A+ = 2 contracts (~18.75pt stop), A = 1 contract (~37.5pt stop)
+// R:R: Minimum 1:2, Maximum 1:5
+//
+// NOTE: TradingView Essential plan limits backtesting to DAILY timeframes.
+// Upgrade to Premium to backtest on 10-minute intraday bars.
+
+strategy("MNQ Rules v3.0", overlay=true,
+  initial_capital=25000,
+  default_qty_type=strategy.fixed,
+  default_qty_value=1,
+  commission_type=strategy.commission.cash_per_contract,
+  commission_value=0.50,
+  slippage=1,
+  currency=currency.USD,
+  calc_on_every_tick=false)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+lkbk      = input.int(10,    "Sweep Lookback Bars",   minval=3,  maxval=50)
+rr_min    = input.float(2.0, "Min R:R",               minval=1.0, maxval=5.0, step=0.5)
+rr_max    = input.float(5.0, "Max R:R (TP Cap)",      minval=1.0, maxval=10.0, step=0.5)
+a_plus    = input.bool(false, "A+ Setup (2 contracts)")
+use_kz    = input.bool(true,  "Filter: NY AM Kill Zone 9:30–11:30 ET")
+daily_loss_limit = input.float(150.0, "Daily Loss Limit ($)")
+max_daily_trades  = input.int(3,   "Max Trades per Day (Best-of-3)")
+stop_after_losses = input.int(2,   "Stop After N Losses in Day")
+
+// ─── Kill Zone ─────────────────────────────────────────────────────────────
+in_kz_raw = not na(time(timeframe.period, "0930-1130", "America/New_York"))
+in_kz     = use_kz ? in_kz_raw : true
+
+// ─── Sweep Detection (FIXED: [2] excludes bar[1] from reference set) ────────
+// ref_low  = min of bars 2..lkbk+1 ago (does NOT include bar[1] itself)
+// bull_sweep: bar[1] dipped below old swing low AND current bar reverses up
+ref_low  = ta.lowest(low,  lkbk)[2]
+ref_high = ta.highest(high, lkbk)[2]
+
+bull_sweep = low[1]  < ref_low  and close > ref_low  and close > open
+bear_sweep = high[1] > ref_high and close < ref_high and close < open
+
+// ─── Daily Risk Controls ──────────────────────────────────────────────────
+var int   d_trades = 0
+var int   d_losses = 0
+var float d_pnl    = 0.0
+var int   d_closed = 0
+
+if ta.change(time("D")) != 0
+    d_trades := 0
+    d_losses := 0
+    d_pnl    := 0.0
+    d_closed := strategy.closedtrades
+
+// Track closed trades since day start
+if strategy.closedtrades > d_closed
+    last_pnl  = strategy.closedtrades.profit(strategy.closedtrades - 1)
+    d_pnl    := d_pnl + last_pnl
+    d_losses := last_pnl < 0 ? d_losses + 1 : d_losses
+    d_closed := strategy.closedtrades
+
+// Trading allowed conditions
+can_trade = in_kz and
+  strategy.position_size == 0 and
+  d_trades < max_daily_trades and
+  d_losses < stop_after_losses and
+  d_pnl > -daily_loss_limit
+
+// ─── Contract Size ────────────────────────────────────────────────────────
+// A+ setup: tight stop ~18.75pts → 2 contracts ($75 risk)
+// A  setup: wide  stop ~37.5pts  → 1 contract  ($75 risk)
+contracts = a_plus ? 2 : 1
+
+// ─── Entries ──────────────────────────────────────────────────────────────
+if bull_sweep and can_trade
+    sl  = low[1]  - syminfo.mintick * 2
+    tp1 = close + (close - sl) * rr_min
+    tp2 = close + (close - sl) * rr_max
+    tp  = math.min(tp1, tp2)
+    strategy.entry("Long", strategy.long, qty=contracts)
+    strategy.exit("Long Exit", "Long", stop=sl, limit=tp)
+    d_trades += 1
+
+if bear_sweep and can_trade
+    sl  = high[1] + syminfo.mintick * 2
+    tp1 = close - (sl - close) * rr_min
+    tp2 = close - (sl - close) * rr_max
+    tp  = math.max(tp1, tp2)
+    strategy.entry("Short", strategy.short, qty=contracts)
+    strategy.exit("Short Exit", "Short", stop=sl, limit=tp)
+    d_trades += 1
+
+// ─── Visualizations ───────────────────────────────────────────────────────
+plotshape(bull_sweep and in_kz, "Bull Sweep (KZ)", shape.triangleup,   location.belowbar, color.new(color.green, 0), size=size.small)
+plotshape(bear_sweep and in_kz, "Bear Sweep (KZ)", shape.triangledown,  location.abovebar, color.new(color.red,   0), size=size.small)
+plotshape(bull_sweep and not in_kz and use_kz, "Bull Sweep (out KZ)", shape.triangleup,   location.belowbar, color.new(color.green, 70), size=size.tiny)
+plotshape(bear_sweep and not in_kz and use_kz, "Bear Sweep (out KZ)", shape.triangledown,  location.abovebar, color.new(color.red,   70), size=size.tiny)
+
+// Kill Zone background
+bgcolor(in_kz ? color.new(color.teal, 92) : na, title="Kill Zone")
+
+// ─── Dashboard ────────────────────────────────────────────────────────────
+if barstate.islastconfirmedhistory
+    var table dash = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 80), border_width=1)
+    table.cell(dash, 0, 0, "MNQ Rules v3.0",    text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
+    table.cell(dash, 1, 0, "Best-of-3",          text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 60))
+    table.cell(dash, 0, 1, "Trades Today",        text_color=color.gray,  text_size=size.tiny)
+    table.cell(dash, 1, 1, str.tostring(d_trades) + "/" + str.tostring(max_daily_trades), text_color=color.white, text_size=size.small)
+    table.cell(dash, 0, 2, "Losses Today",        text_color=color.gray,  text_size=size.tiny)
+    table.cell(dash, 1, 2, str.tostring(d_losses) + "/" + str.tostring(stop_after_losses), text_color=d_losses >= stop_after_losses ? color.red : color.white, text_size=size.small)
+    table.cell(dash, 0, 3, "Daily P&L",           text_color=color.gray,  text_size=size.tiny)
+    table.cell(dash, 1, 3, "$" + str.tostring(math.round(d_pnl, 2)), text_color=d_pnl >= 0 ? color.green : color.red, text_size=size.small)
+    table.cell(dash, 0, 4, "Setup",               text_color=color.gray,  text_size=size.tiny)
+    table.cell(dash, 1, 4, a_plus ? "A+ (2ct)" : "A (1ct)",  text_color=color.yellow, text_size=size.small)
+    table.cell(dash, 0, 5, "Kill Zone",            text_color=color.gray,  text_size=size.tiny)
+    table.cell(dash, 1, 5, use_kz ? (in_kz ? "ACTIVE" : "OFF") : "DISABLED", text_color=in_kz ? color.lime : color.gray, text_size=size.small)
