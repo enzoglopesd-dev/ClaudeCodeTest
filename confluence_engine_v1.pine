@@ -16,7 +16,9 @@ i_useKZ    = input.bool(true,  "Filtro: Sessao 8h-15h SP",       group="3. Filtr
 i_useVWAP  = input.bool(true,  "Filtro: VWAP",                   group="3. Filtros")
 i_useVol   = input.bool(false, "Filtro: Volume > Media",         group="3. Filtros")
 i_volLen   = input.int(20,     "Volume - Periodo Media",         group="3. Filtros", minval=5)
-i_cooldown = input.int(5,      "Cooldown entre sinais (barras)", group="3. Filtros", minval=1, maxval=50)
+i_cooldown = input.int(10,     "Cooldown entre sinais (barras)", group="3. Filtros", minval=1, maxval=50)
+i_minSigs  = input.int(2,      "Min. tipos de sinal simultâneos", group="3. Filtros", minval=1, maxval=3, tooltip="2 = exige que 2 de 3 sinais confluam na mesma barra. Reduz muito o ruído.")
+i_minScore = input.int(7,      "Score mínimo (3=★  5=★★  7=★★★)", group="3. Filtros", minval=3, maxval=10, tooltip="7 = só ★★★. Para ver ★★ também, use 5.")
 i_atrLen   = input.int(14,     "ATR Periodo",                    group="4. Niveis (SL / TP)")
 i_slAtr    = input.float(1.0,  "Stop Loss (x ATR)",              group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
 i_tp1Atr   = input.float(1.0,  "Take Profit 1 (x ATR)",         group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
@@ -114,13 +116,17 @@ kz_ok       = not i_useKZ   or in_kz
 vwap_lng_ok = not i_useVWAP or above_vwap
 vwap_sht_ok = not i_useVWAP or not above_vwap
 vol_ok      = not i_useVol  or high_vol
-raw_long    = s1_long  or s2_long  or s3_long
-raw_short   = s1_short or s2_short or s3_short
+
+// Conta quantos tipos de sinal confluem nessa barra
+sig_count_long  = (s1_long  ? 1 : 0) + (s2_long  ? 1 : 0) + (s3_long  ? 1 : 0)
+sig_count_short = (s1_short ? 1 : 0) + (s2_short ? 1 : 0) + (s3_short ? 1 : 0)
+raw_long  = sig_count_long  >= i_minSigs
+raw_short = sig_count_short >= i_minSigs
 
 var int last_sig_bar = -999
 cooldown_ok = bar_index - last_sig_bar >= i_cooldown
-sig_long    = raw_long  and kz_ok and vwap_lng_ok and vol_ok and stars_long  != "" and cooldown_ok
-sig_short   = raw_short and kz_ok and vwap_sht_ok and vol_ok and stars_short != "" and cooldown_ok
+sig_long    = raw_long  and kz_ok and vwap_lng_ok and vol_ok and sc_long  >= i_minScore and cooldown_ok
+sig_short   = raw_short and kz_ok and vwap_sht_ok and vol_ok and sc_short >= i_minScore and cooldown_ok
 if sig_long or sig_short
     last_sig_bar := bar_index
 
@@ -179,9 +185,10 @@ if i_showDash and barstate.islast
     table.cell(dash, 1, 7,  s2_long ? "LONG" : s2_short ? "SHORT" : "-", text_color=s2_long ? color.lime : s2_short ? color.red : color.gray, text_size=size.tiny)
     table.cell(dash, 0, 8,  f_yn(s3_long or s3_short) + " SR Retest",  text_color=f_lg(s3_long or s3_short), text_size=size.tiny)
     table.cell(dash, 1, 8,  s3_long ? "LONG" : s3_short ? "SHORT" : "-", text_color=s3_long ? color.lime : s3_short ? color.red : color.gray, text_size=size.tiny)
-    sc_cur = sig_long ? sc_long : sig_short ? sc_short : 0
-    table.cell(dash, 0, 9,  "Score",                              text_color=color.white, text_size=size.tiny)
-    table.cell(dash, 1, 9,  str.tostring(sc_cur) + "/10",        text_color=sc_cur >= 7 ? color.yellow : sc_cur >= 5 ? color.lime : color.gray, text_size=size.tiny)
+    sc_cur  = sc_long > sc_short ? sc_long : sc_short
+    cnt_cur = sig_count_long > sig_count_short ? sig_count_long : sig_count_short
+    table.cell(dash, 0, 9,  "Score / Sinais",                    text_color=color.white, text_size=size.tiny)
+    table.cell(dash, 1, 9,  str.tostring(sc_cur) + "/10  (" + str.tostring(cnt_cur) + " tipos)", text_color=sc_cur >= 7 ? color.yellow : sc_cur >= 5 ? color.lime : color.gray, text_size=size.tiny)
     cur_txt = sig_long ? stars_long + " LONG" : sig_short ? stars_short + " SHORT" : "AGUARDANDO"
     cur_col = sig_long ? color.lime : sig_short ? color.red : color.gray
     table.cell(dash, 0, 10, "SINAL",                              text_color=color.white, text_size=size.small, bgcolor=color.new(#1a237e, 30))
