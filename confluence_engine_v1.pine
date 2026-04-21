@@ -20,7 +20,7 @@ i_mSig     = input.int(9,      "MACD Signal",                   group="2. MACD +
 i_emaLen   = input.int(200,    "EMA Length",                    group="2. MACD + EMA 200")
 
 // 3. Filtros
-i_useKZ    = input.bool(true,  "Filtro: Kill Zone 9:30-11:30 ET", group="3. Filtros")
+i_useKZ    = input.bool(true,  "Filtro: Sessao 8-10:30h e 12:30-15h ET", group="3. Filtros")
 i_useVWAP  = input.bool(true,  "Filtro: VWAP",                  group="3. Filtros")
 i_useVol   = input.bool(false, "Filtro: Volume > Media",        group="3. Filtros")
 i_volLen   = input.int(20,     "Volume - Periodo Media",        group="3. Filtros")
@@ -46,7 +46,7 @@ ema200              = ta.ema(close, i_emaLen)
 vwap_v              = ta.vwap(hlc3)
 atr_v               = ta.atr(i_atrLen)
 vol_avg             = ta.sma(volume, i_volLen)
-in_kz               = not na(time(timeframe.period, "0930-1130", "America/New_York"))
+in_kz               = not na(time(timeframe.period, "0800-1030,1230-1500", "America/New_York"))
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SINAL 1 — MACD CROSSOVER + EMA 200
@@ -282,19 +282,19 @@ if sig_long and not na(atr_v)
     col  = qual_long == "A+" ? col_long_ap : qual_long == "A" ? col_long_a : col_long_b
     sl_p = close - atr_v * i_slAtr
     tp_p = close + atr_v * i_tpAtr
-    lbl  = qual_long + " L  " + f_p(close) + "\nSL " + f_p(sl_p) + "  TP " + f_p(tp_p)
+    lbl  = qual_long + "  " + f_p(close) + "\nSL " + f_p(sl_p) + " TP " + f_p(tp_p)
     label.new(bar_index, low - atr_v * 0.4, lbl,
          color=col, textcolor=color.white,
-         style=label.style_label_up, size=size.small)
+         style=label.style_label_up, size=size.tiny)
 
 if sig_short and not na(atr_v)
     col  = qual_short == "A+" ? col_short_ap : qual_short == "A" ? col_short_a : col_short_b
     sl_p = close + atr_v * i_slAtr
     tp_p = close - atr_v * i_tpAtr
-    lbl  = qual_short + " S  " + f_p(close) + "\nSL " + f_p(sl_p) + "  TP " + f_p(tp_p)
+    lbl  = qual_short + "  " + f_p(close) + "\nSL " + f_p(sl_p) + " TP " + f_p(tp_p)
     label.new(bar_index, high + atr_v * 0.4, lbl,
          color=col, textcolor=color.white,
-         style=label.style_label_down, size=size.small)
+         style=label.style_label_down, size=size.tiny)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD — CONDICOES ATUAIS (canto superior esquerdo)
@@ -318,7 +318,7 @@ if i_showDash and barstate.islast
          bgcolor=color.new(#1a237e, 30))
 
     // Kill Zone
-    table.cell(dash, 0, 1, f_yn(in_kz) + " Kill Zone",
+    table.cell(dash, 0, 1, f_yn(in_kz) + " Sessao ET",
          text_color=f_lg(in_kz), text_size=size.tiny)
     table.cell(dash, 1, 1, in_kz ? "ATIVO" : "FORA",
          text_color=f_lg(in_kz), text_size=size.tiny)
