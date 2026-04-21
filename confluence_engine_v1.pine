@@ -20,10 +20,11 @@ i_mSig     = input.int(9,      "MACD Signal",                   group="2. MACD +
 i_emaLen   = input.int(200,    "EMA Length",                    group="2. MACD + EMA 200")
 
 // 3. Filtros
-i_useKZ    = input.bool(true,  "Filtro: Sessao 8-10:30h e 12:30-15h ET", group="3. Filtros")
+i_useKZ    = input.bool(true,  "Filtro: Sessao 8h-15h SP",       group="3. Filtros")
 i_useVWAP  = input.bool(true,  "Filtro: VWAP",                  group="3. Filtros")
 i_useVol   = input.bool(false, "Filtro: Volume > Media",        group="3. Filtros")
 i_volLen   = input.int(20,     "Volume - Periodo Media",        group="3. Filtros")
+i_cooldown = input.int(5,      "Cooldown entre sinais (barras)", group="3. Filtros", minval=1, maxval=50)
 
 // 4. Stats
 i_evalBars = input.int(30,     "Barras p/ avaliar resultado",   group="4. Stats", minval=5, maxval=200)
@@ -46,7 +47,7 @@ ema200              = ta.ema(close, i_emaLen)
 vwap_v              = ta.vwap(hlc3)
 atr_v               = ta.atr(i_atrLen)
 vol_avg             = ta.sma(volume, i_volLen)
-in_kz               = not na(time(timeframe.period, "0800-1030,1230-1500", "America/New_York"))
+in_kz               = not na(time(timeframe.period, "0800-1500", "America/Sao_Paulo"))
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SINAL 1 — MACD CROSSOVER + EMA 200
@@ -169,8 +170,14 @@ vol_ok      = not i_useVol  or high_vol
 raw_long  = s1_long  or s2_long  or s3_long
 raw_short = s1_short or s2_short or s3_short
 
-sig_long  = raw_long  and kz_ok and vwap_lng_ok and vol_ok and qual_long  != ""
-sig_short = raw_short and kz_ok and vwap_sht_ok and vol_ok and qual_short != ""
+var int last_sig_bar = -999
+cooldown_ok = bar_index - last_sig_bar >= i_cooldown
+
+sig_long  = raw_long  and kz_ok and vwap_lng_ok and vol_ok and qual_long  != "" and cooldown_ok
+sig_short = raw_short and kz_ok and vwap_sht_ok and vol_ok and qual_short != "" and cooldown_ok
+
+if sig_long or sig_short
+    last_sig_bar := bar_index
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STATS TRACKING
@@ -318,9 +325,9 @@ if i_showDash and barstate.islast
          bgcolor=color.new(#1a237e, 30))
 
     // Kill Zone
-    table.cell(dash, 0, 1, f_yn(in_kz) + " Sessao ET",
+    table.cell(dash, 0, 1, f_yn(in_kz) + " Sessao SP",
          text_color=f_lg(in_kz), text_size=size.tiny)
-    table.cell(dash, 1, 1, in_kz ? "ATIVO" : "FORA",
+    table.cell(dash, 1, 1, in_kz ? "8-15h ATIVO" : "FORA",
          text_color=f_lg(in_kz), text_size=size.tiny)
 
     // EMA 200
