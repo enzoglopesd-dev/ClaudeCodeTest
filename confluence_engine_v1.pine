@@ -52,8 +52,10 @@ in_kz               = not na(time(timeframe.period, "0930-1130", "America/New_Yo
 // SINAL 1 — MACD CROSSOVER + EMA 200
 // ══════════════════════════════════════════════════════════════════════════════
 
-s1_long  = i_useCross and ta.crossover(macd_l, macd_s)  and close > ema200
-s1_short = i_useCross and ta.crossunder(macd_l, macd_s) and close < ema200
+cross_up   = ta.crossover(macd_l,  macd_s)
+cross_down = ta.crossunder(macd_l, macd_s)
+s1_long  = i_useCross and cross_up   and close > ema200
+s1_short = i_useCross and cross_down and close < ema200
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SINAL 2 — MACD EXHAUSTION (predict)
@@ -203,36 +205,38 @@ if sig_short and not na(atr_v)
     array.push(st_qual, qual_short)
     array.push(st_exp,  bar_index + i_evalBars)
 
-// Avaliar sinais pendentes
+// Avaliar sinais pendentes — nunca na barra de entrada, só nas barras seguintes
 idx = 0
 while idx < array.size(st_bar)
-    d   = array.get(st_dir,  idx)
-    sl  = array.get(st_sl,   idx)
-    tp  = array.get(st_tp,   idx)
-    q   = array.get(st_qual, idx)
-    exp = array.get(st_exp,  idx)
+    sig_b = array.get(st_bar,  idx)
+    d     = array.get(st_dir,  idx)
+    sl    = array.get(st_sl,   idx)
+    tp    = array.get(st_tp,   idx)
+    q     = array.get(st_qual, idx)
+    exp   = array.get(st_exp,  idx)
 
     resolved = false
     won      = false
 
-    if d == 1
-        if low  <= sl
-            resolved := true
-            won      := false
-        else if high >= tp
-            resolved := true
-            won      := true
-    else
-        if high >= sl
-            resolved := true
-            won      := false
-        else if low  <= tp
-            resolved := true
-            won      := true
+    if sig_b < bar_index
+        if d == 1
+            if low  <= sl
+                resolved := true
+                won      := false
+            else if high >= tp
+                resolved := true
+                won      := true
+        else
+            if high >= sl
+                resolved := true
+                won      := false
+            else if low  <= tp
+                resolved := true
+                won      := true
 
-    if not resolved and bar_index >= exp
-        resolved := true
-        won      := false
+        if not resolved and bar_index >= exp
+            resolved := true
+            won      := false
 
     if resolved
         if q == "A+"
@@ -263,25 +267,33 @@ while idx < array.size(st_bar)
 // LABELS NO CHART
 // ══════════════════════════════════════════════════════════════════════════════
 
-col_ap  = color.new(color.yellow, 0)
-col_a   = color.new(color.lime,   0)
-col_b   = color.new(color.aqua,   0)
-col_txt = color.new(color.black,  0)
+// LONG  → verde: A+=vivo | A=médio | B=pálido
+col_long_ap  = color.new(#00C853,  0)
+col_long_a   = color.new(#00C853, 45)
+col_long_b   = color.new(#00C853, 72)
+// SHORT → vermelho: A+=vivo | A=médio | B=pálido
+col_short_ap = color.new(#D50000,  0)
+col_short_a  = color.new(#D50000, 45)
+col_short_b  = color.new(#D50000, 72)
 
-if sig_long
-    col = qual_long == "A+" ? col_ap : qual_long == "A" ? col_a : col_b
-    src = (s1_long ? "Cross " : "") + (s2_long ? "Exhaust " : "") + (s3_long ? "SR" : "")
-    label.new(bar_index, low - atr_v * 0.5,
-         qual_long + " LONG\n" + str.trim(src),
-         color=col, textcolor=col_txt,
+f_p(p) => str.tostring(math.round(p, 1))
+
+if sig_long and not na(atr_v)
+    col  = qual_long == "A+" ? col_long_ap : qual_long == "A" ? col_long_a : col_long_b
+    sl_p = close - atr_v * i_slAtr
+    tp_p = close + atr_v * i_tpAtr
+    lbl  = qual_long + " L  " + f_p(close) + "\nSL " + f_p(sl_p) + "  TP " + f_p(tp_p)
+    label.new(bar_index, low - atr_v * 0.4, lbl,
+         color=col, textcolor=color.white,
          style=label.style_label_up, size=size.small)
 
-if sig_short
-    col = qual_short == "A+" ? col_ap : qual_short == "A" ? col_a : col_b
-    src = (s1_short ? "Cross " : "") + (s2_short ? "Exhaust " : "") + (s3_short ? "SR" : "")
-    label.new(bar_index, high + atr_v * 0.5,
-         qual_short + " SHORT\n" + str.trim(src),
-         color=col, textcolor=col_txt,
+if sig_short and not na(atr_v)
+    col  = qual_short == "A+" ? col_short_ap : qual_short == "A" ? col_short_a : col_short_b
+    sl_p = close + atr_v * i_slAtr
+    tp_p = close - atr_v * i_tpAtr
+    lbl  = qual_short + " S  " + f_p(close) + "\nSL " + f_p(sl_p) + "  TP " + f_p(tp_p)
+    label.new(bar_index, high + atr_v * 0.4, lbl,
+         color=col, textcolor=color.white,
          style=label.style_label_down, size=size.small)
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -368,10 +380,8 @@ if i_showDash and barstate.islast
          text_size=size.tiny)
 
     // Sinal atual
-    cur_txt = sig_long  ? qual_long  + " LONG"  :
-              sig_short ? qual_short + " SHORT" : "AGUARDANDO"
-    cur_col = sig_long  ? color.lime :
-              sig_short ? color.red  : color.gray
+    cur_txt = sig_long ? qual_long + " LONG" : sig_short ? qual_short + " SHORT" : "AGUARDANDO"
+    cur_col = sig_long ? color.lime : sig_short ? color.red : color.gray
     table.cell(dash, 0, 10, "SINAL",
          text_color=color.white, text_size=size.small,
          bgcolor=color.new(#1a237e, 30))
