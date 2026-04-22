@@ -1,5 +1,5 @@
 //@version=6
-indicator("MNQ Confluence Engine v1.0", overlay=true, max_labels_count=500, max_lines_count=100)
+indicator("MNQ Confluence Engine v1.0", overlay=true, max_labels_count=500, max_lines_count=100, max_boxes_count=20)
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
 i_useSR    = input.bool(true,  "Ativar SR Retest",               group="1. SR Break & Retest")
@@ -23,9 +23,10 @@ i_atrLen   = input.int(14,     "ATR Periodo",                    group="4. Nivei
 i_slAtr    = input.float(1.0,  "Stop Loss (x ATR)",              group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
 i_tp1Atr   = input.float(1.0,  "Take Profit 1 (x ATR)",         group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
 i_tp2Atr   = input.float(2.0,  "Take Profit 2 (x ATR)",         group="4. Niveis (SL / TP)", step=0.25, minval=0.5)
-i_showDash = input.bool(true,  "Dashboard (condicoes atuais)",   group="5. Visual")
-i_showSR   = input.bool(true,  "Linhas SR",                      group="5. Visual")
-i_showKZbg = input.bool(true,  "Background Sessao",              group="5. Visual")
+i_showDash   = input.bool(true,  "Dashboard (condicoes atuais)",        group="5. Visual")
+i_showSR     = input.bool(true,  "Linhas SR",                          group="5. Visual")
+i_showKZbg   = input.bool(true,  "Background Sessao",                  group="5. Visual")
+i_showLevels = input.bool(true,  "Niveis SL/TP (ultimo sinal)",        group="5. Visual")
 
 // ── Indicators ────────────────────────────────────────────────────────────────
 ema200                 = ta.ema(close, i_emaLen)
@@ -108,8 +109,8 @@ sc_short := sc_short + (not above_ema  ? 1 : 0)
 sc_short := sc_short + (high_vol       ? 1 : 0)
 sc_short := sc_short + (hist < hist[1] ? 1 : 0)
 
-stars_long  = sc_long  >= 7 ? "★★★" : sc_long  >= 5 ? "★★" : sc_long  >= 3 ? "★" : ""
-stars_short = sc_short >= 7 ? "★★★" : sc_short >= 5 ? "★★" : sc_short >= 3 ? "★" : ""
+stars_long  = sc_long  >= 7 ? "***" : sc_long  >= 5 ? "**" : sc_long  >= 3 ? "*" : ""
+stars_short = sc_short >= 7 ? "***" : sc_short >= 5 ? "**" : sc_short >= 3 ? "*" : ""
 
 // ── Filters & Final Signal ───────────────────────────────────────────────────
 kz_ok       = not i_useKZ   or in_kz
@@ -123,7 +124,13 @@ sig_count_short = (s1_short ? 1 : 0) + (s2_short ? 1 : 0) + (s3_short ? 1 : 0)
 raw_long  = sig_count_long  >= i_minSigs
 raw_short = sig_count_short >= i_minSigs
 
-var int last_sig_bar = -999
+var int   last_sig_bar = -999
+var int   ls_bar       = na
+var float ls_entry     = na
+var float ls_sl        = na
+var float ls_tp1       = na
+var float ls_tp2       = na
+var bool  ls_long      = na
 cooldown_ok = bar_index - last_sig_bar >= i_cooldown
 sig_long    = raw_long  and kz_ok and vwap_lng_ok and vol_ok and sc_long  >= i_minScore and cooldown_ok
 sig_short   = raw_short and kz_ok and vwap_sht_ok and vol_ok and sc_short >= i_minScore and cooldown_ok
@@ -149,6 +156,12 @@ if sig_long and not na(atr_v) and barstate.isconfirmed
     label.new(bar_index, low - atr_v * 0.4, lbl,
               color=col, textcolor=color.white,
               style=label.style_label_up, size=size.small)
+    ls_bar   := bar_index
+    ls_entry := close
+    ls_sl    := sl_p
+    ls_tp1   := tp1_p
+    ls_tp2   := tp2_p
+    ls_long  := true
 
 if sig_short and not na(atr_v) and barstate.isconfirmed
     col   = sc_short >= 7 ? col_short_3 : sc_short >= 5 ? col_short_2 : col_short_1
@@ -159,6 +172,12 @@ if sig_short and not na(atr_v) and barstate.isconfirmed
     label.new(bar_index, high + atr_v * 0.4, lbl,
               color=col, textcolor=color.white,
               style=label.style_label_down, size=size.small)
+    ls_bar   := bar_index
+    ls_entry := close
+    ls_sl    := sl_p
+    ls_tp1   := tp1_p
+    ls_tp2   := tp2_p
+    ls_long  := false
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 f_yn(c) => c ? "[v]" : "[ ]"
@@ -204,3 +223,58 @@ if i_showSR and barstate.islast
         line.new(bar_index - 50, sr_res, bar_index, sr_res, color=color.new(color.green, 40), style=line.style_dashed, width=1, extend=extend.right)
     if not na(sr_sup)
         line.new(bar_index - 50, sr_sup, bar_index, sr_sup, color=color.new(color.red,   40), style=line.style_dashed, width=1, extend=extend.right)
+
+// ── SL / TP Visual Levels (último sinal) ─────────────────────────────────────
+var line  lv_ln_entry = na
+var line  lv_ln_sl    = na
+var line  lv_ln_tp1   = na
+var line  lv_ln_tp2   = na
+var box   lv_bx_sl    = na
+var box   lv_bx_tp1   = na
+var box   lv_bx_tp2   = na
+var label lv_lb_entry = na
+var label lv_lb_sl    = na
+var label lv_lb_tp1   = na
+var label lv_lb_tp2   = na
+
+if i_showLevels and barstate.islast and not na(ls_bar)
+    line.delete(lv_ln_entry)
+    line.delete(lv_ln_sl)
+    line.delete(lv_ln_tp1)
+    line.delete(lv_ln_tp2)
+    box.delete(lv_bx_sl)
+    box.delete(lv_bx_tp1)
+    box.delete(lv_bx_tp2)
+    label.delete(lv_lb_entry)
+    label.delete(lv_lb_sl)
+    label.delete(lv_lb_tp1)
+    label.delete(lv_lb_tp2)
+
+    x1   = ls_bar
+    x2   = bar_index + 80
+    xlbl = bar_index + 2
+
+    c_entry_ln = color.new(color.white, 20)
+    c_sl_ln    = color.new(color.red,    0)
+    c_tp_ln    = color.new(color.lime,   0)
+    c_sl_bg    = color.new(color.red,   82)
+    c_tp1_bg   = color.new(color.lime,  85)
+    c_tp2_bg   = color.new(color.lime,  78)
+
+    // Zonas coloridas (verde = lucro, vermelho = SL)
+    lv_bx_sl  := box.new(x1, math.max(ls_entry, ls_sl),  x2, math.min(ls_entry, ls_sl),  bgcolor=c_sl_bg,  border_color=na)
+    lv_bx_tp1 := box.new(x1, math.max(ls_entry, ls_tp1), x2, math.min(ls_entry, ls_tp1), bgcolor=c_tp1_bg, border_color=na)
+    lv_bx_tp2 := box.new(x1, math.max(ls_tp1,   ls_tp2), x2, math.min(ls_tp1,   ls_tp2), bgcolor=c_tp2_bg, border_color=na)
+
+    // Linhas tracejadas nos níveis
+    lv_ln_entry := line.new(x1, ls_entry, x2, ls_entry, color=c_entry_ln, style=line.style_dashed, width=1, extend=extend.right)
+    lv_ln_sl    := line.new(x1, ls_sl,    x2, ls_sl,    color=c_sl_ln,    style=line.style_dashed, width=1, extend=extend.right)
+    lv_ln_tp1   := line.new(x1, ls_tp1,   x2, ls_tp1,  color=c_tp_ln,    style=line.style_dotted, width=1, extend=extend.right)
+    lv_ln_tp2   := line.new(x1, ls_tp2,   x2, ls_tp2,  color=c_tp_ln,    style=line.style_dashed, width=2, extend=extend.right)
+
+    // Labels com preço no lado direito
+    lbl_dir = ls_long ? "LONG" : "SHORT"
+    lv_lb_entry := label.new(xlbl, ls_entry, "◆ ENTRY " + f_p(ls_entry) + "  [" + lbl_dir + "]", color=na, textcolor=color.white,             style=label.style_label_left, size=size.small)
+    lv_lb_sl    := label.new(xlbl, ls_sl,    "✕ SL "    + f_p(ls_sl),                              color=na, textcolor=color.red,               style=label.style_label_left, size=size.small)
+    lv_lb_tp1   := label.new(xlbl, ls_tp1,   "◆ TP1 "   + f_p(ls_tp1),                            color=na, textcolor=color.lime,              style=label.style_label_left, size=size.small)
+    lv_lb_tp2   := label.new(xlbl, ls_tp2,   "◆ TP2 "   + f_p(ls_tp2),                            color=na, textcolor=color.new(color.lime, 0), style=label.style_label_left, size=size.small)
