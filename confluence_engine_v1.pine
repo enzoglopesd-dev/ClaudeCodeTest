@@ -2,31 +2,36 @@
 indicator("MNQ Confluence Engine v1.0", overlay=true, max_labels_count=500, max_lines_count=100, max_boxes_count=20)
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
-i_useSR    = input.bool(true,  "Ativar SR Retest",               group="1. SR Break & Retest")
-i_srLeft   = input.int(10,     "Pivot Esquerda",                 group="1. SR Break & Retest", minval=3)
-i_srRight  = input.int(3,      "Pivot Direita",                  group="1. SR Break & Retest", minval=1)
-i_useCross = input.bool(true,  "Ativar MACD Crossover",          group="2. MACD + EMA 200")
-i_useExh   = input.bool(true,  "Ativar MACD Exhaustion",         group="2. MACD + EMA 200")
-i_exhBars  = input.int(3,      "Barras p/ Exhaustion",           group="2. MACD + EMA 200", minval=2, maxval=6)
-i_mFast    = input.int(12,     "MACD Fast",                      group="2. MACD + EMA 200")
-i_mSlow    = input.int(26,     "MACD Slow",                      group="2. MACD + EMA 200")
-i_mSig     = input.int(9,      "MACD Signal",                    group="2. MACD + EMA 200")
-i_emaLen   = input.int(200,    "EMA Length",                     group="2. MACD + EMA 200")
-i_useKZ    = input.bool(true,  "Filtro: Sessao 8h-15h SP",       group="3. Filtros")
-i_useVWAP  = input.bool(true,  "Filtro: VWAP",                   group="3. Filtros")
-i_useVol   = input.bool(false, "Filtro: Volume > Media",         group="3. Filtros")
-i_volLen   = input.int(20,     "Volume - Periodo Media",         group="3. Filtros", minval=5)
-i_cooldown = input.int(10,     "Cooldown entre sinais (barras)", group="3. Filtros", minval=1, maxval=50)
-i_minSigs  = input.int(2,      "Min. tipos de sinal simultâneos", group="3. Filtros", minval=1, maxval=3, tooltip="2 = exige que 2 de 3 sinais confluam na mesma barra. Reduz muito o ruído.")
-i_minScore = input.int(7,      "Score mínimo (3=★  5=★★  7=★★★)", group="3. Filtros", minval=3, maxval=10, tooltip="7 = só ★★★. Para ver ★★ também, use 5.")
-i_atrLen   = input.int(14,     "ATR Periodo",                    group="4. Niveis (SL / TP)")
-i_slAtr    = input.float(1.0,  "Stop Loss (x ATR)",              group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
-i_tp1Atr   = input.float(1.0,  "Take Profit 1 (x ATR)",         group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
-i_tp2Atr   = input.float(2.0,  "Take Profit 2 (x ATR)",         group="4. Niveis (SL / TP)", step=0.25, minval=0.5)
-i_showDash   = input.bool(true,  "Dashboard (condicoes atuais)",        group="5. Visual")
-i_showSR     = input.bool(true,  "Linhas SR",                          group="5. Visual")
-i_showKZbg   = input.bool(true,  "Background Sessao",                  group="5. Visual")
-i_showLevels = input.bool(true,  "Niveis SL/TP (ultimo sinal)",        group="5. Visual")
+i_useSR      = input.bool(true,  "Ativar SR Retest",                  group="1. SR Break & Retest")
+i_srLeft     = input.int(10,     "Pivot Esquerda",                    group="1. SR Break & Retest", minval=3)
+i_srRight    = input.int(3,      "Pivot Direita",                     group="1. SR Break & Retest", minval=1)
+i_srZonePts  = input.int(10,     "Zona de tolerancia (pontos)",       group="1. SR Break & Retest", minval=3, step=1, tooltip="Distancia maxima do nivel SR para considerar como retest. Antes era 0.75x ATR (~3-6pts). Agora em pontos fixos.")
+i_useCross   = input.bool(true,  "Ativar MACD Crossover",             group="2. MACD + EMA 200")
+i_useExh     = input.bool(true,  "Ativar MACD Exhaustion",            group="2. MACD + EMA 200")
+i_exhBars    = input.int(3,      "Barras p/ Exhaustion",              group="2. MACD + EMA 200", minval=2, maxval=6)
+i_mFast      = input.int(12,     "MACD Fast",                        group="2. MACD + EMA 200")
+i_mSlow      = input.int(26,     "MACD Slow",                        group="2. MACD + EMA 200")
+i_mSig       = input.int(9,      "MACD Signal",                      group="2. MACD + EMA 200")
+i_emaLen     = input.int(200,    "EMA Length",                       group="2. MACD + EMA 200")
+i_useKZ      = input.bool(true,  "Filtro: Sessao 8h-15h SP",          group="3. Filtros")
+i_useVWAP    = input.bool(false, "Filtro: VWAP",                      group="3. Filtros", tooltip="Desativado por padrao — em retestes de suporte o preco pode estar abaixo do VWAP e ainda ser uma entrada valida.")
+i_useVol     = input.bool(false, "Filtro: Volume > Media",            group="3. Filtros")
+i_volLen     = input.int(20,     "Volume - Periodo Media",            group="3. Filtros", minval=5)
+i_cooldown   = input.int(10,     "Cooldown entre sinais (barras)",    group="3. Filtros", minval=1, maxval=50)
+i_minSigs    = input.int(2,      "Min. tipos de sinal simultaneos",   group="3. Filtros", minval=1, maxval=3, tooltip="2 = exige que 2 de 3 sinais confluam na mesma barra.")
+i_minScore   = input.int(5,      "Score minimo (3=* 5=** 7=***)",     group="3. Filtros", minval=3, maxval=10, tooltip="5 = mostra ** e ***. 7 = apenas ***.")
+i_useFixedPts = input.bool(true, "Usar pontos fixos (nao ATR)",       group="4. Niveis (SL / TP)", tooltip="Ativado: SL/TP em pontos fixos. Desativado: multiplica o ATR.")
+i_slPts      = input.int(15,     "Stop Loss (pontos)",                group="4. Niveis (SL / TP)", minval=5,  step=5)
+i_tp1Pts     = input.int(30,     "Take Profit 1 (pontos)",            group="4. Niveis (SL / TP)", minval=10, step=5)
+i_tp2Pts     = input.int(50,     "Take Profit 2 (pontos)",            group="4. Niveis (SL / TP)", minval=20, step=5)
+i_atrLen     = input.int(14,     "ATR Periodo (se modo ATR)",         group="4. Niveis (SL / TP)")
+i_slAtr      = input.float(1.5,  "Stop Loss (x ATR)",                 group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
+i_tp1Atr     = input.float(3.0,  "Take Profit 1 (x ATR)",            group="4. Niveis (SL / TP)", step=0.25, minval=0.25)
+i_tp2Atr     = input.float(6.0,  "Take Profit 2 (x ATR)",            group="4. Niveis (SL / TP)", step=0.25, minval=0.5)
+i_showDash   = input.bool(true,  "Dashboard (condicoes atuais)",      group="5. Visual")
+i_showSR     = input.bool(true,  "Linhas SR",                         group="5. Visual")
+i_showKZbg   = input.bool(true,  "Background Sessao",                 group="5. Visual")
+i_showLevels = input.bool(true,  "Niveis SL/TP (ultimo sinal)",       group="5. Visual")
 
 // ── Indicators ────────────────────────────────────────────────────────────────
 ema200                 = ta.ema(close, i_emaLen)
@@ -77,7 +82,9 @@ if not na(last_ph) and close[1] <= last_ph and close > last_ph
     sr_res := last_ph
 if not na(last_pl) and close[1] >= last_pl and close < last_pl
     sr_sup := last_pl
-sr_zone      = atr_v * 0.75
+
+// Zona de tolerancia em pontos fixos (antes: 0.75x ATR = ~3-6pts no 1-min)
+sr_zone      = float(i_srZonePts)
 s3_long_raw  = i_useSR and not na(sr_res) and close > sr_res and low  < sr_res + sr_zone and close > open
 s3_short_raw = i_useSR and not na(sr_sup) and close < sr_sup and high > sr_sup - sr_zone and close < open
 s3_long      = s3_long_raw  and not s3_long_raw[1]
@@ -118,7 +125,6 @@ vwap_lng_ok = not i_useVWAP or above_vwap
 vwap_sht_ok = not i_useVWAP or not above_vwap
 vol_ok      = not i_useVol  or high_vol
 
-// Conta quantos tipos de sinal confluem nessa barra
 sig_count_long  = (s1_long  ? 1 : 0) + (s2_long  ? 1 : 0) + (s3_long  ? 1 : 0)
 sig_count_short = (s1_short ? 1 : 0) + (s2_short ? 1 : 0) + (s3_short ? 1 : 0)
 raw_long  = sig_count_long  >= i_minSigs
@@ -130,14 +136,19 @@ var float ls_entry     = na
 var float ls_sl        = na
 var float ls_tp1       = na
 var float ls_tp2       = na
-var bool  ls_long      = na
+var bool  ls_long      = false
 cooldown_ok = bar_index - last_sig_bar >= i_cooldown
 sig_long    = raw_long  and kz_ok and vwap_lng_ok and vol_ok and sc_long  >= i_minScore and cooldown_ok
 sig_short   = raw_short and kz_ok and vwap_sht_ok and vol_ok and sc_short >= i_minScore and cooldown_ok
 if sig_long or sig_short
     last_sig_bar := bar_index
 
-// ── Signal Labels — só em barras confirmadas (sem repaint) ────────────────────
+// ── SL/TP distance (pontos fixos ou ATR) ─────────────────────────────────────
+f_sl_d()  => i_useFixedPts ? float(i_slPts)  : atr_v * i_slAtr
+f_tp1_d() => i_useFixedPts ? float(i_tp1Pts) : atr_v * i_tp1Atr
+f_tp2_d() => i_useFixedPts ? float(i_tp2Pts) : atr_v * i_tp2Atr
+
+// ── Signal Labels — so em barras confirmadas (sem repaint) ────────────────────
 f_p(p) => str.tostring(math.round(p, 1))
 
 col_long_3  = color.new(#00C853,  0)
@@ -147,12 +158,12 @@ col_short_3 = color.new(#D50000,  0)
 col_short_2 = color.new(#D50000, 45)
 col_short_1 = color.new(#D50000, 68)
 
-if sig_long and not na(atr_v) and barstate.isconfirmed
+if sig_long and barstate.isconfirmed
     col   = sc_long >= 7 ? col_long_3 : sc_long >= 5 ? col_long_2 : col_long_1
-    sl_p  = close - atr_v * i_slAtr
-    tp1_p = close + atr_v * i_tp1Atr
-    tp2_p = close + atr_v * i_tp2Atr
-    lbl   = stars_long + "  BUY\nSL " + f_p(sl_p) + "  |  TP1 " + f_p(tp1_p) + "  |  TP2 " + f_p(tp2_p)
+    sl_p  = close - f_sl_d()
+    tp1_p = close + f_tp1_d()
+    tp2_p = close + f_tp2_d()
+    lbl   = stars_long + "  BUY\nSL " + f_p(f_sl_d()) + "pts  |  TP1 " + f_p(f_tp1_d()) + "pts  |  TP2 " + f_p(f_tp2_d()) + "pts"
     label.new(bar_index, low - atr_v * 0.4, lbl,
               color=col, textcolor=color.white,
               style=label.style_label_up, size=size.small)
@@ -163,12 +174,12 @@ if sig_long and not na(atr_v) and barstate.isconfirmed
     ls_tp2   := tp2_p
     ls_long  := true
 
-if sig_short and not na(atr_v) and barstate.isconfirmed
+if sig_short and barstate.isconfirmed
     col   = sc_short >= 7 ? col_short_3 : sc_short >= 5 ? col_short_2 : col_short_1
-    sl_p  = close + atr_v * i_slAtr
-    tp1_p = close - atr_v * i_tp1Atr
-    tp2_p = close - atr_v * i_tp2Atr
-    lbl   = stars_short + "  SELL\nSL " + f_p(sl_p) + "  |  TP1 " + f_p(tp1_p) + "  |  TP2 " + f_p(tp2_p)
+    sl_p  = close + f_sl_d()
+    tp1_p = close - f_tp1_d()
+    tp2_p = close - f_tp2_d()
+    lbl   = stars_short + "  SELL\nSL " + f_p(f_sl_d()) + "pts  |  TP1 " + f_p(f_tp1_d()) + "pts  |  TP2 " + f_p(f_tp2_d()) + "pts"
     label.new(bar_index, high + atr_v * 0.4, lbl,
               color=col, textcolor=color.white,
               style=label.style_label_down, size=size.small)
@@ -224,7 +235,7 @@ if i_showSR and barstate.islast
     if not na(sr_sup)
         line.new(bar_index - 50, sr_sup, bar_index, sr_sup, color=color.new(color.red,   40), style=line.style_dashed, width=1, extend=extend.right)
 
-// ── SL / TP Visual Levels (último sinal) ─────────────────────────────────────
+// ── SL / TP Visual Levels (ultimo sinal) ─────────────────────────────────────
 var line  lv_ln_entry = na
 var line  lv_ln_sl    = na
 var line  lv_ln_tp1   = na
@@ -261,20 +272,17 @@ if i_showLevels and barstate.islast and not na(ls_bar)
     c_tp1_bg   = color.new(color.lime,  85)
     c_tp2_bg   = color.new(color.lime,  78)
 
-    // Zonas coloridas (verde = lucro, vermelho = SL)
     lv_bx_sl  := box.new(x1, math.max(ls_entry, ls_sl),  x2, math.min(ls_entry, ls_sl),  bgcolor=c_sl_bg,  border_color=na)
     lv_bx_tp1 := box.new(x1, math.max(ls_entry, ls_tp1), x2, math.min(ls_entry, ls_tp1), bgcolor=c_tp1_bg, border_color=na)
     lv_bx_tp2 := box.new(x1, math.max(ls_tp1,   ls_tp2), x2, math.min(ls_tp1,   ls_tp2), bgcolor=c_tp2_bg, border_color=na)
 
-    // Linhas tracejadas nos níveis
     lv_ln_entry := line.new(x1, ls_entry, x2, ls_entry, color=c_entry_ln, style=line.style_dashed, width=1, extend=extend.right)
     lv_ln_sl    := line.new(x1, ls_sl,    x2, ls_sl,    color=c_sl_ln,    style=line.style_dashed, width=1, extend=extend.right)
     lv_ln_tp1   := line.new(x1, ls_tp1,   x2, ls_tp1,  color=c_tp_ln,    style=line.style_dotted, width=1, extend=extend.right)
     lv_ln_tp2   := line.new(x1, ls_tp2,   x2, ls_tp2,  color=c_tp_ln,    style=line.style_dashed, width=2, extend=extend.right)
 
-    // Labels com preço no lado direito
     lbl_dir = ls_long ? "LONG" : "SHORT"
-    lv_lb_entry := label.new(xlbl, ls_entry, "◆ ENTRY " + f_p(ls_entry) + "  [" + lbl_dir + "]", color=na, textcolor=color.white,             style=label.style_label_left, size=size.small)
-    lv_lb_sl    := label.new(xlbl, ls_sl,    "✕ SL "    + f_p(ls_sl),                              color=na, textcolor=color.red,               style=label.style_label_left, size=size.small)
-    lv_lb_tp1   := label.new(xlbl, ls_tp1,   "◆ TP1 "   + f_p(ls_tp1),                            color=na, textcolor=color.lime,              style=label.style_label_left, size=size.small)
-    lv_lb_tp2   := label.new(xlbl, ls_tp2,   "◆ TP2 "   + f_p(ls_tp2),                            color=na, textcolor=color.new(color.lime, 0), style=label.style_label_left, size=size.small)
+    lv_lb_entry := label.new(xlbl, ls_entry, "ENTRY " + f_p(ls_entry) + "  [" + lbl_dir + "]", color=na, textcolor=color.white, style=label.style_label_left, size=size.small)
+    lv_lb_sl    := label.new(xlbl, ls_sl,    "SL "    + f_p(ls_sl),                              color=na, textcolor=color.red,   style=label.style_label_left, size=size.small)
+    lv_lb_tp1   := label.new(xlbl, ls_tp1,   "TP1 "   + f_p(ls_tp1),                            color=na, textcolor=color.lime,  style=label.style_label_left, size=size.small)
+    lv_lb_tp2   := label.new(xlbl, ls_tp2,   "TP2 "   + f_p(ls_tp2),                            color=na, textcolor=color.lime,  style=label.style_label_left, size=size.small)
