@@ -1,0 +1,166 @@
+//@version=6
+indicator("AMD + IFVG [MNQ]", overlay=true, max_boxes_count=200, max_lines_count=100, max_labels_count=100)
+
+// ══════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════
+int   acc_bars  = input.int  (10,   "Min consolidation bars",    minval=3,  maxval=60,   group="Accumulation")
+float acc_range = input.float(10.0, "Max range size (pts)",       minval=1.0, step=0.5,  group="Accumulation")
+float man_sweep = input.float(3.0,  "Min spike distance (pts)",   minval=0.5, step=0.25, group="Manipulation")
+int   ifvg_max  = input.int  (8,    "Max bars to detect IFVG",    minval=2,  maxval=20,  group="IFVG")
+float ifvg_min  = input.float(2.0,  "Min IFVG size (pts)",        minval=0.5, step=0.25, group="IFVG")
+bool  show_mid  = input.bool (true, "Show IFVG midpoint line",     group="IFVG")
+bool  alr_man   = input.bool (true, "Alert: Manipulation detected",group="Alerts")
+bool  alr_ifvg  = input.bool (true, "Alert: IFVG identified",     group="Alerts")
+bool  alr_dist  = input.bool (true, "Alert: Distribution starts",  group="Alerts")
+
+// ══════════════════════════════════════════════════════
+// STATE  0=idle | 1=accumulating | 2=manipulation | 3=distribution
+// ══════════════════════════════════════════════════════
+var int   st        = 0
+var float acc_hi    = na
+var float acc_lo    = na
+var int   acc_st    = 0
+var int   man_dir   = 0      // 1=bull (spike below) | -1=bear (spike above)
+var int   man_idx   = 0
+var float ifvg_top  = na
+var float ifvg_bot  = na
+var bool  dist_on   = false
+var box   b_acc     = na
+var box   b_man     = na
+var box   b_ifvg    = na
+var box   b_dist    = na
+var line  l_mid     = na
+
+// ══════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════
+r_hi  = ta.highest(high, acc_bars)
+r_lo  = ta.lowest (low,  acc_bars)
+tight = (r_hi - r_lo) <= acc_range
+
+// ══════════════════════════════════════════════════════
+// DAILY RESET
+// ══════════════════════════════════════════════════════
+if ta.change(time("D")) != 0 and st != 0
+    st      := 0
+    dist_on := false
+
+// ══════════════════════════════════════════════════════
+// STATE 0: IDLE — waiting for accumulation
+// ══════════════════════════════════════════════════════
+if st == 0 and tight
+    st     := 1
+    acc_hi := r_hi
+    acc_lo := r_lo
+    acc_st := bar_index - acc_bars + 1
+    b_acc  := box.new(acc_st, acc_hi, bar_index, acc_lo, border_color=color.new(#FFD700, 20), bgcolor=color.new(#FFD700, 82), border_width=1, text="ACCUM", text_color=color.new(#B8860B, 0), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
+
+// ══════════════════════════════════════════════════════
+// STATE 1: ACCUMULATING — extend box, watch for spike
+// ══════════════════════════════════════════════════════
+else if st == 1
+    box.set_right(b_acc, bar_index)
+
+    // BEARISH manipulation: wick above range + closes back inside
+    if high >= acc_hi + man_sweep and close <= acc_hi
+        st      := 2
+        man_dir := -1
+        man_idx := bar_index
+        b_man   := box.new(bar_index, high, bar_index, acc_hi, border_color=color.new(#FF4444, 10), bgcolor=color.new(#FF4444, 72), border_width=1, text="MANIP", text_color=color.new(#CC0000, 0), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top)
+        if alr_man
+            alert("AMD | Bearish Manipulation — spike to " + str.tostring(high, "#.##"), alert.freq_once_per_bar)
+
+    // BULLISH manipulation: wick below range + closes back inside
+    else if low <= acc_lo - man_sweep and close >= acc_lo
+        st      := 2
+        man_dir := 1
+        man_idx := bar_index
+        b_man   := box.new(bar_index, acc_lo, bar_index, low, border_color=color.new(#FF4444, 10), bgcolor=color.new(#FF4444, 72), border_width=1, text="MANIP", text_color=color.new(#CC0000, 0), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
+        if alr_man
+            alert("AMD | Bullish Manipulation — spike to " + str.tostring(low, "#.##"), alert.freq_once_per_bar)
+
+    else if tight
+        // Still consolidating — update boundaries
+        acc_hi := r_hi
+        acc_lo := r_lo
+        box.set_top   (b_acc, acc_hi)
+        box.set_bottom(b_acc, acc_lo)
+
+    else if (bar_index - acc_st) > acc_bars * 4
+        // Range expanded without a spike — reset
+        st := 0
+        box.delete(b_acc)
+
+// ══════════════════════════════════════════════════════
+// STATE 2: MANIPULATION — look for IFVG in next bars
+// The IFVG = 3-bar Fair Value Gap that forms right after the spike reversal.
+// Price will return to fill this zone, triggering distribution.
+// ══════════════════════════════════════════════════════
+else if st == 2
+    box.set_right(b_man, bar_index)
+    bars_since = bar_index - man_idx
+
+    // Check for IFVG starting from bar+2 after manipulation (need 3-bar pattern)
+    if bars_since >= 2 and bars_since <= ifvg_max
+        // Bearish IFVG: low[2] > high — gap between left bar's low and current high
+        if man_dir == -1 and low[2] > high and (low[2] - high) >= ifvg_min
+            st        := 3
+            dist_on   := false
+            ifvg_top  := low[2]
+            ifvg_bot  := high
+            ifvg_mid   = (ifvg_top + ifvg_bot) / 2
+            b_ifvg    := box.new(bar_index - 2, ifvg_top, bar_index + 40, ifvg_bot, border_color=color.new(#FF8C00, 0), bgcolor=color.new(#FF8C00, 65), border_width=1, text="IFVG", text_color=color.new(#FF8C00, 0), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
+            if show_mid
+                l_mid := line.new(bar_index - 2, ifvg_mid, bar_index + 40, ifvg_mid, color=color.new(#FF8C00, 0), style=line.style_dashed, width=1)
+            if alr_ifvg
+                alert("AMD | Bearish IFVG: " + str.tostring(ifvg_top, "#.##") + " - " + str.tostring(ifvg_bot, "#.##"), alert.freq_once_per_bar)
+
+        // Bullish IFVG: high[2] < low — gap between left bar's high and current low
+        else if man_dir == 1 and high[2] < low and (low - high[2]) >= ifvg_min
+            st        := 3
+            dist_on   := false
+            ifvg_top  := low
+            ifvg_bot  := high[2]
+            ifvg_mid   = (ifvg_top + ifvg_bot) / 2
+            b_ifvg    := box.new(bar_index - 2, ifvg_top, bar_index + 40, ifvg_bot, border_color=color.new(#FF8C00, 0), bgcolor=color.new(#FF8C00, 65), border_width=1, text="IFVG", text_color=color.new(#FF8C00, 0), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
+            if show_mid
+                l_mid := line.new(bar_index - 2, ifvg_mid, bar_index + 40, ifvg_mid, color=color.new(#FF8C00, 0), style=line.style_dashed, width=1)
+            if alr_ifvg
+                alert("AMD | Bullish IFVG: " + str.tostring(ifvg_bot, "#.##") + " - " + str.tostring(ifvg_top, "#.##"), alert.freq_once_per_bar)
+
+    else if bars_since > ifvg_max
+        // No IFVG found in time — reset
+        st := 0
+
+// ══════════════════════════════════════════════════════
+// STATE 3: IFVG IDENTIFIED — wait for fill → distribution
+// ══════════════════════════════════════════════════════
+else if st == 3
+    // Keep IFVG box and midline extended to current bar
+    box.set_right(b_ifvg, bar_index + 5)
+    if show_mid and not na(l_mid)
+        line.set_x2(l_mid, bar_index + 5)
+
+    // IFVG fill: price enters the gap zone
+    // Bearish: price rallies back up into the gap → short entry
+    // Bullish: price pulls back down into the gap → long entry
+    ifvg_filled = man_dir == -1 ? (high >= ifvg_bot and low <= ifvg_top) : (low <= ifvg_top and high >= ifvg_bot)
+
+    // Distribution starts on first IFVG fill
+    if ifvg_filled and not dist_on
+        dist_on := true
+        b_dist  := box.new(bar_index, high, bar_index, low, border_color=color.new(#00C853, 0), bgcolor=color.new(#00C853, 72), border_width=1, text="DIST", text_color=color.new(#006400, 0), text_size=size.small, text_halign=text.align_left, text_valign=man_dir == -1 ? text.align_bottom : text.align_top)
+        if alr_dist
+            alert("AMD | " + (man_dir == -1 ? "BEARISH" : "BULLISH") + " Distribution — IFVG filled!", alert.freq_once_per_bar)
+
+    // Extend distribution box to track the full move
+    if dist_on
+        box.set_right (b_dist, bar_index)
+        box.set_top   (b_dist, math.max(box.get_top   (b_dist), high))
+        box.set_bottom(b_dist, math.min(box.get_bottom(b_dist), low ))
+
+    // New accumulation forming after enough time → restart cycle
+    if tight and (bar_index - man_idx) > acc_bars * 2
+        st      := 0
+        dist_on := false
