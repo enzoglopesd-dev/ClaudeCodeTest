@@ -1,0 +1,187 @@
+//@version=6
+indicator("AMD — Accumulation · Manipulation · Distribution [MNQ]",
+     overlay=true, max_boxes_count=200, max_lines_count=50, max_labels_count=100)
+
+// ══════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════
+int   acc_bars  = input.int  (15,   "Min consolidation bars",        minval=5,  maxval=100,  group="Accumulation")
+float acc_range = input.float(12.0, "Max range size (pts)",           minval=2.0, step=0.5,   group="Accumulation")
+
+float man_sweep = input.float(4.0,  "Min sweep distance (pts)",       minval=0.5, step=0.25,  group="Manipulation")
+int   man_conf  = input.int  (2,    "Reversal confirm bars",           minval=1,  maxval=10,   group="Manipulation")
+int   man_tmo   = input.int  (30,   "Timeout if no reversal (bars)",   minval=5,  maxval=200,  group="Manipulation")
+
+bool  show_fvg  = input.bool (true, "Show FVGs in distribution",       group="Distribution")
+float fvg_min   = input.float(2.0,  "Min FVG size (pts)",              minval=0.5, step=0.25,  group="Distribution")
+
+color c_acc_bg  = input.color(color.new(#5C85D6, 85), "Accumulation fill",   group="Colors")
+color c_acc_bd  = input.color(color.new(#5C85D6, 30), "Accumulation border", group="Colors")
+color c_man     = input.color(color.orange,            "Manipulation label",  group="Colors")
+color c_bull_bg = input.color(color.new(#26a69a, 80),  "Distribution Bull",   group="Colors")
+color c_bear_bg = input.color(color.new(#ef5350, 80),  "Distribution Bear",   group="Colors")
+color c_fvg_b   = input.color(color.new(#00897B, 70),  "FVG Bullish",         group="Colors")
+color c_fvg_r   = input.color(color.new(#C62828, 70),  "FVG Bearish",         group="Colors")
+color c_swept   = input.color(color.orange,             "Swept Level Line",    group="Colors")
+
+bool  alr_man   = input.bool (true, "Alert: Manipulation detected",   group="Alerts")
+bool  alr_dist  = input.bool (true, "Alert: Distribution confirmed",  group="Alerts")
+
+// ══════════════════════════════════════════════════════════════════
+// STATE  0=idle | 1=accumulating | 2=manipulation | 3=distribution
+// ══════════════════════════════════════════════════════════════════
+var int   st       = 0
+var float acc_hi   = na
+var float acc_lo   = na
+var int   acc_st   = 0
+var int   man_dir  = 0       // 1=bull (swept lows) | -1=bear (swept highs)
+var float swpt_lv  = na
+var int   man_idx  = 0
+var int   conf_n   = 0
+var box   b_acc    = na
+var box   b_dist   = na
+var line  l_swpt   = na
+
+// ══════════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════════
+r_hi  = ta.highest(high, acc_bars)
+r_lo  = ta.lowest (low,  acc_bars)
+tight = (r_hi - r_lo) <= acc_range
+
+// Bullish FVG: gap between bar[2].high and current low
+bull_fvg = barstate.isconfirmed and high[2] < low  and (low  - high[2]) >= fvg_min
+// Bearish FVG: gap between bar[2].low and current high
+bear_fvg = barstate.isconfirmed and low[2]  > high and (low[2] - high ) >= fvg_min
+
+// ══════════════════════════════════════════════════════════════════
+// DAILY RESET — keeps chart clean between sessions
+// ══════════════════════════════════════════════════════════════════
+if ta.change(time("D")) != 0 and st != 0
+    st := 0
+
+// ══════════════════════════════════════════════════════════════════
+// STATE 0: IDLE — looking for tight accumulation range
+// ══════════════════════════════════════════════════════════════════
+if st == 0 and tight
+    st     := 1
+    acc_hi := r_hi
+    acc_lo := r_lo
+    acc_st := bar_index - acc_bars + 1
+    b_acc  := box.new(acc_st, acc_hi, bar_index, acc_lo,
+                      border_color=c_acc_bd, bgcolor=c_acc_bg,
+                      border_width=1, text="ACCUM",
+                      text_color=c_acc_bd, text_size=size.tiny,
+                      text_halign=text.align_left, text_valign=text.align_bottom)
+
+// ══════════════════════════════════════════════════════════════════
+// STATE 1: ACCUMULATING — extend box, watch for liquidity sweep
+// ══════════════════════════════════════════════════════════════════
+else if st == 1
+    box.set_right(b_acc, bar_index)
+
+    // Check sweep BEFORE updating range boundaries
+    if high >= acc_hi + man_sweep
+        // Bearish manipulation: price swept buy stops above the range
+        st      := 2
+        man_dir := -1
+        swpt_lv := high
+        man_idx := bar_index
+        conf_n  := 0
+        l_swpt  := line.new(bar_index, swpt_lv, bar_index + 50, swpt_lv,
+                            color=c_swept, style=line.style_dashed, width=1)
+        label.new(bar_index, swpt_lv,
+                  "SWEEP H  " + str.tostring(swpt_lv, "#.##"),
+                  yloc=yloc.price, style=label.style_label_down,
+                  color=c_man, textcolor=color.white, size=size.small)
+        if alr_man
+            alert("AMD | Bearish Manipulation — swept H " + str.tostring(swpt_lv, "#.##"),
+                  alert.freq_once_per_bar)
+
+    else if low <= acc_lo - man_sweep
+        // Bullish manipulation: price swept sell stops below the range
+        st      := 2
+        man_dir := 1
+        swpt_lv := low
+        man_idx := bar_index
+        conf_n  := 0
+        l_swpt  := line.new(bar_index, swpt_lv, bar_index + 50, swpt_lv,
+                            color=c_swept, style=line.style_dashed, width=1)
+        label.new(bar_index, swpt_lv,
+                  "SWEEP L  " + str.tostring(swpt_lv, "#.##"),
+                  yloc=yloc.price, style=label.style_label_up,
+                  color=c_man, textcolor=color.white, size=size.small)
+        if alr_man
+            alert("AMD | Bullish Manipulation — swept L " + str.tostring(swpt_lv, "#.##"),
+                  alert.freq_once_per_bar)
+
+    else if tight
+        // Still consolidating — update boundaries
+        acc_hi := r_hi
+        acc_lo := r_lo
+        box.set_top   (b_acc, acc_hi)
+        box.set_bottom(b_acc, acc_lo)
+
+    else if (bar_index - acc_st) > acc_bars * 4
+        // Range expanded too much without a sweep — reset
+        st := 0
+        box.delete(b_acc)
+
+// ══════════════════════════════════════════════════════════════════
+// STATE 2: MANIPULATION — waiting for reversal confirmation
+// ══════════════════════════════════════════════════════════════════
+else if st == 2
+    line.set_x2(l_swpt, bar_index + 20)
+
+    // Count consecutive bars closing back inside the accumulation zone
+    if man_dir == 1 and close > acc_lo
+        conf_n += 1
+    else if man_dir == -1 and close < acc_hi
+        conf_n += 1
+    else
+        conf_n := 0
+
+    if conf_n >= man_conf
+        // Distribution confirmed — real move starting
+        st     := 3
+        b_dist := box.new(bar_index, high, bar_index, low,
+                          border_color=man_dir == 1 ? color.new(#26a69a, 0) : color.new(#ef5350, 0),
+                          bgcolor=man_dir == 1 ? c_bull_bg : c_bear_bg,
+                          border_width=1,
+                          text=man_dir == 1 ? "DIST ▲" : "DIST ▼",
+                          text_color=man_dir == 1 ? color.new(#26a69a, 0) : color.new(#ef5350, 0),
+                          text_size=size.small, text_halign=text.align_left,
+                          text_valign=text.align_top)
+        if alr_dist
+            alert("AMD | " + (man_dir == 1 ? "BULLISH" : "BEARISH") + " Distribution confirmed!",
+                  alert.freq_once_per_bar)
+
+    else if (bar_index - man_idx) > man_tmo
+        // No reversal within timeout window — reset
+        st := 0
+
+// ══════════════════════════════════════════════════════════════════
+// STATE 3: DISTRIBUTION ACTIVE — track move, draw FVGs
+// ══════════════════════════════════════════════════════════════════
+else if st == 3
+    // Expand distribution box to contain full move
+    box.set_right (b_dist, bar_index)
+    box.set_top   (b_dist, math.max(box.get_top   (b_dist), high))
+    box.set_bottom(b_dist, math.min(box.get_bottom(b_dist), low ))
+
+    // Keep swept line anchored near current bar
+    if not na(l_swpt)
+        line.set_x2(l_swpt, bar_index + 5)
+
+    // Draw FVGs aligned with distribution direction
+    if show_fvg
+        if man_dir == 1 and bull_fvg
+            box.new(bar_index - 2, low, bar_index + 30, high[2],
+                    border_color=c_fvg_b, bgcolor=c_fvg_b, border_width=1)
+        if man_dir == -1 and bear_fvg
+            box.new(bar_index - 2, low[2], bar_index + 30, high,
+                    border_color=c_fvg_r, bgcolor=c_fvg_r, border_width=1)
+
+    // If price re-accumulates after sufficient distribution, start new cycle
+    if tight and (bar_index - man_idx) > acc_bars
+        st := 0
