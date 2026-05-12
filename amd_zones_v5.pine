@@ -16,6 +16,7 @@ float fvg_atr_mult = input.float(0.5,  "Min FVG Gap (ATR Multiplier)",  minval=0
 int   atr_len      = input.int  (14,   "ATR Length",                    minval=5,  maxval=50,   group="Trade Settings")
 float atr_sl_mult  = input.float(2.0,  "ATR SL Multiplier",             minval=0.5, step=0.25,  group="Trade Settings")
 float rr_ratio     = input.float(2.0,  "Reward-to-Risk Ratio",          minval=0.5, step=0.5,   group="Trade Settings")
+bool  show_accum   = input.bool (true, "Show Accumulation/Manipulation zones", group="Trade Settings")
 bool  show_zones   = input.bool (true, "Show SL/TP zones",               group="Trade Settings")
 bool  show_mid     = input.bool (true, "Show FVG midpoint line",         group="Trade Settings")
 
@@ -99,7 +100,7 @@ if st == 0 and tight and in_session
     acc_hi := r_hi
     acc_lo := r_lo
     acc_st := bar_index - acc_bars + 1
-    b_acc  := box.new(acc_st, acc_hi, bar_index, acc_lo, border_color=color.new(#FFD700, 20), bgcolor=color.new(#FFD700, 82), border_width=1, text="ACCUM", text_color=color.new(#B8860B, 0), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
+    b_acc  := box.new(acc_st, acc_hi, bar_index, acc_lo, border_color=show_accum ? color.new(#FFD700, 20) : color.new(color.white, 100), bgcolor=show_accum ? color.new(#FFD700, 82) : color.new(color.white, 100), border_width=1, text=show_accum ? "ACCUM" : "", text_color=show_accum ? color.new(#B8860B, 0) : color.new(color.white, 100), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
 
 // ══════════════════════════════════════════════════════
 // STATE 1: ACCUMULATING
@@ -114,7 +115,7 @@ else if st == 1
         man_dir     := -1
         man_idx     := bar_index
         man_extreme := high
-        b_man       := box.new(bar_index, high, bar_index, acc_hi, border_color=color.new(#FF4444, 10), bgcolor=color.new(#FF4444, 72), border_width=1, text="MANIP ▲", text_color=color.new(#CC0000, 0), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top)
+        b_man       := box.new(bar_index, high, bar_index, acc_hi, border_color=show_accum ? color.new(#FF4444, 10) : color.new(color.white, 100), bgcolor=show_accum ? color.new(#FF4444, 72) : color.new(color.white, 100), border_width=1, text=show_accum ? "MANIP ▲" : "", text_color=show_accum ? color.new(#CC0000, 0) : color.new(color.white, 100), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top)
         if alr_man
             alert("AMD | Bearish Manipulation — spike to " + str.tostring(high, "#.##"), alert.freq_once_per_bar)
 
@@ -124,7 +125,7 @@ else if st == 1
         man_dir     := 1
         man_idx     := bar_index
         man_extreme := low
-        b_man       := box.new(bar_index, acc_lo, bar_index, low, border_color=color.new(#FF4444, 10), bgcolor=color.new(#FF4444, 72), border_width=1, text="MANIP ▼", text_color=color.new(#CC0000, 0), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
+        b_man       := box.new(bar_index, acc_lo, bar_index, low, border_color=show_accum ? color.new(#FF4444, 10) : color.new(color.white, 100), bgcolor=show_accum ? color.new(#FF4444, 72) : color.new(color.white, 100), border_width=1, text=show_accum ? "MANIP ▼" : "", text_color=show_accum ? color.new(#CC0000, 0) : color.new(color.white, 100), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
         if alr_man
             alert("AMD | Bullish Manipulation — spike to " + str.tostring(low, "#.##"), alert.freq_once_per_bar)
 
