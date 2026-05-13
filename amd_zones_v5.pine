@@ -4,24 +4,30 @@ indicator("AMD + FVG [MNQ] v5", overlay=true, max_boxes_count=500, max_lines_cou
 // ═══════════════════════════════════════════════════════════════════
 // SHARED
 // ═══════════════════════════════════════════════════════════════════
-atr_len    = input.int  (14,   "ATR Length",      minval=5,  maxval=50,   group="⚙️ Shared")
-rr_ratio   = input.float(2.0,  "Reward / Risk",   minval=0.5, step=0.5,   group="⚙️ Shared")
-show_zones = input.bool (true,  "SL/TP Zones",                             group="⚙️ Shared")
-show_mid   = input.bool (true,  "FVG midpoint",                            group="⚙️ Shared")
-use_ny     = input.bool (true,  "New York 08-17 EST",  group="⚙️ Sessions")
-use_lon    = input.bool (false, "London  03-12 EST",   group="⚙️ Sessions")
+atr_len    = input.int  (14,    "ATR Length",                    minval=5,  maxval=50,   group="⚙️ Shared")
+rr_ratio   = input.float(2.0,   "Reward / Risk",                 minval=0.5, step=0.5,   group="⚙️ Shared")
+show_zones = input.bool (true,  "SL/TP Zones",                                            group="⚙️ Shared")
+show_mid   = input.bool (true,  "FVG midpoint",                                           group="⚙️ Shared")
+filter_ema = input.bool (false, "Filtro EMA200 (só favor tendência)",                     group="⚙️ Shared")
+use_ny     = input.bool (true,  "New York 08-17 EST",            group="⚙️ Sessions")
+use_lon    = input.bool (false, "London  03-12 EST",             group="⚙️ Sessions")
 
 atr_val = ta.atr(atr_len)
+ema200  = ta.ema(close, 200)
 is_ny   = not na(time(timeframe.period, "0800-1700", "America/New_York"))
 is_lon  = not na(time(timeframe.period, "0300-1200", "Europe/London"))
 in_sess = (not use_ny and not use_lon) or (use_ny and is_ny) or (use_lon and is_lon)
+
+// EMA200 bias helpers — when filter disabled, always true
+bias_long  = not filter_ema or close > ema200
+bias_short = not filter_ema or close < ema200
 
 // ═══════════════════════════════════════════════════════════════════
 // MODEL 1 — AMD + FVG  (PO3)
 // ═══════════════════════════════════════════════════════════════════
 enable_amd   = input.bool (true,   "▶ Sinais AMD + FVG",        group="M1 — AMD + FVG")
 acc_bars     = input.int  (30,     "Acumulação — Length",        minval=5,  maxval=100,  group="M1 — AMD + FVG")
-acc_pct      = input.float(0.05,   "Acumulação — Range %",       minval=0.01, step=0.01, group="M1 — AMD + FVG")
+acc_pct      = input.float(0.15,   "Acumulação — Range %",       minval=0.01, step=0.01, group="M1 — AMD + FVG")
 man_sw       = input.float(3.0,    "Spike mínimo (pts)",         minval=0.5, step=0.25,  group="M1 — AMD + FVG")
 amd_sl_mult  = input.float(2.0,    "ATR × SL",                   minval=0.5, step=0.25,  group="M1 — AMD + FVG")
 amd_win      = input.int  (10,     "Janela FVG (bars)",          minval=2,  maxval=30,   group="M1 — AMD + FVG")
@@ -164,7 +170,8 @@ if enable_amd
         if show_mid and not na(A_lmid)
             line.set_x2(A_lmid, bar_index + 5)
         fA = A_mdir == -1 ? (high >= A_fbot and low <= A_ftop) : (low <= A_ftop and high >= A_fbot)
-        if fA and not A_don
+        a_bias = A_mdir == 1 ? bias_long : bias_short
+        if fA and not A_don and a_bias
             A_don  := true
             sl_a    = atr_val * amd_sl_mult
             A_entr := A_mdir == -1 ? A_fbot : A_ftop
@@ -227,11 +234,12 @@ if enable_amd
 // MODEL 2 — BOS + FVG
 // Break of Structure confirmado → pullback cria FVG → retest = entrada
 // ═══════════════════════════════════════════════════════════════════
-enable_bos  = input.bool (true,  "▶ Sinais BOS + FVG",      group="M2 — BOS + FVG")
-bos_swing   = input.int  (10,   "Swing lookback (bars)",    minval=3, maxval=50,   group="M2 — BOS + FVG")
-bos_win     = input.int  (20,   "Janela FVG (bars)",        minval=3, maxval=60,   group="M2 — BOS + FVG")
-bos_sl_mult = input.float(1.5,  "ATR × SL",                 minval=0.5, step=0.25, group="M2 — BOS + FVG")
-bos_fmin    = input.float(0.3,  "FVG mín (ATR mult)",       minval=0.1, step=0.1,  group="M2 — BOS + FVG")
+enable_bos  = input.bool (true,  "▶ Sinais BOS + FVG",         group="M2 — BOS + FVG")
+bos_swing   = input.int  (20,    "Swing lookback (bars)",       minval=3, maxval=50,   group="M2 — BOS + FVG")
+bos_margin  = input.float(3.0,   "BOS margem mínima (pts)",     minval=0.0, step=0.5,  group="M2 — BOS + FVG")
+bos_win     = input.int  (20,    "Janela FVG (bars)",           minval=3, maxval=60,   group="M2 — BOS + FVG")
+bos_sl_mult = input.float(1.5,   "ATR × SL",                    minval=0.5, step=0.25, group="M2 — BOS + FVG")
+bos_fmin    = input.float(0.3,   "FVG mín (ATR mult)",          minval=0.1, step=0.1,  group="M2 — BOS + FVG")
 
 var int   B_st   = 0
 var int   B_dir  = 0
@@ -255,13 +263,13 @@ B_fmn = atr_val * bos_fmin
 
 if enable_bos and in_sess
     if B_st == 0
-        if close > B_shi
+        if close > B_shi + bos_margin
             B_st   := 1
             B_dir  := 1
             B_bidx := bar_index
             B_don  := false
             B_tph  := false
-        else if close < B_slo
+        else if close < B_slo - bos_margin
             B_st   := 1
             B_dir  := -1
             B_bidx := bar_index
@@ -303,7 +311,8 @@ if enable_bos and in_sess
         if show_mid and not na(B_lmid)
             line.set_x2(B_lmid, bar_index + 5)
         fB = B_dir == 1 ? (low <= B_ftop and high >= B_fbot) : (high >= B_fbot and low <= B_ftop)
-        if fB and not B_don
+        b_bias = B_dir == 1 ? bias_long : bias_short
+        if fB and not B_don and b_bias
             B_don  := true
             sl_b    = atr_val * bos_sl_mult
             B_entr := B_dir == 1 ? B_fbot : B_ftop
@@ -437,7 +446,8 @@ if enable_lq and in_sess
         if show_mid and not na(L_lmid)
             line.set_x2(L_lmid, bar_index + 5)
         fL = L_dir == 1 ? (low <= L_ftop and high >= L_fbot) : (high >= L_fbot and low <= L_ftop)
-        if fL and not L_don
+        l_bias = L_dir == 1 ? bias_long : bias_short
+        if fL and not L_don and l_bias
             L_don  := true
             sl_l    = atr_val * lq_sl_mult
             L_entr := L_dir == 1 ? L_fbot : L_ftop
@@ -491,12 +501,13 @@ if enable_lq and in_sess
 // ═══════════════════════════════════════════════════════════════════
 // MODEL 4 — ORDERBLOCK
 // Identifica último candle oposto antes de impulso → OB zone
-// Entrada quando preço retorna à zona com wick/rejeição
+// Entrada quando preço retorna à zona
 // ═══════════════════════════════════════════════════════════════════
-enable_ob   = input.bool (true,  "▶ Sinais Orderblock",       group="M4 — Orderblock")
-ob_imp_mult = input.float(1.2,   "Impulso mínimo (ATR mult)", minval=0.5, step=0.1,  group="M4 — Orderblock")
-ob_sl_mult  = input.float(1.0,   "ATR × SL",                  minval=0.3, step=0.1,  group="M4 — Orderblock")
-ob_timeout  = input.int  (50,    "Timeout (bars)",             minval=10, maxval=200, group="M4 — Orderblock")
+enable_ob   = input.bool (true,  "▶ Sinais Orderblock",        group="M4 — Orderblock")
+ob_imp_mult = input.float(1.8,   "Impulso mínimo (ATR mult)",  minval=0.5, step=0.1,  group="M4 — Orderblock")
+ob_min_size = input.float(3.0,   "OB tamanho mínimo (pts)",    minval=0.5, step=0.5,  group="M4 — Orderblock")
+ob_sl_mult  = input.float(1.0,   "ATR × SL",                   minval=0.3, step=0.1,  group="M4 — Orderblock")
+ob_timeout  = input.int  (50,    "Timeout (bars)",              minval=10, maxval=200, group="M4 — Orderblock")
 
 var int   O_st      = 0
 var int   O_dir     = 0
@@ -531,7 +542,9 @@ else if close < open
 
 if enable_ob and in_sess
     if O_st == 0
-        if bull_imp and not na(O_ls_top)
+        ob_sz_bull = not na(O_ls_top) and not na(O_ls_bot) ? O_ls_top - O_ls_bot : 0.0
+        ob_sz_bear = not na(O_lb_top) and not na(O_lb_bot) ? O_lb_top - O_lb_bot : 0.0
+        if bull_imp and not na(O_ls_top) and ob_sz_bull >= ob_min_size
             O_st     := 1
             O_dir    := 1
             O_idx    := bar_index
@@ -544,7 +557,7 @@ if enable_ob and in_sess
                  border_width=1, text="OB ▲",
                  text_color=color.new(#76FF03,0), text_size=size.tiny,
                  text_halign=text.align_right, text_valign=text.align_center)
-        else if bear_imp and not na(O_lb_top)
+        else if bear_imp and not na(O_lb_top) and ob_sz_bear >= ob_min_size
             O_st     := 1
             O_dir    := -1
             O_idx    := bar_index
@@ -560,9 +573,9 @@ if enable_ob and in_sess
 
     else if O_st == 1
         box.set_right(O_bob, bar_index + 5)
-        in_ob = low <= O_ob_top and high >= O_ob_bot
-        wick_ok = O_dir == 1 ? (high - math.max(open,close)) < (math.min(open,close) - low) * 0.5 : (math.min(open,close) - low) < (high - math.max(open,close)) * 0.5
-        if in_ob and not O_don
+        in_ob  = low <= O_ob_top and high >= O_ob_bot
+        o_bias = O_dir == 1 ? bias_long : bias_short
+        if in_ob and not O_don and o_bias
             O_don  := true
             sl_o    = atr_val * ob_sl_mult
             O_entr := O_dir == 1 ? O_ob_top : O_ob_bot
