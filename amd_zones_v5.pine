@@ -1,290 +1,622 @@
 //@version=6
-indicator("AMD + FVG [MNQ] v5", overlay=true, max_boxes_count=200, max_lines_count=100, max_labels_count=200)
+indicator("AMD + FVG [MNQ] v5", overlay=true, max_boxes_count=500, max_lines_count=400, max_labels_count=300)
 
-// ══════════════════════════════════════════════════════
-// INPUTS — AMD LOGIC
-// ══════════════════════════════════════════════════════
-int   acc_bars     = input.int  (30,   "Accumulation Length",          minval=5,  maxval=100,  group="AMD Logic")
-float acc_rng_pct  = input.float(0.05, "Accumulation Range Max %",      minval=0.01, step=0.01, group="AMD Logic", tooltip="% of price. Ex: 0.05 = 0.05% of ~29400 ≈ 15 pts")
-float man_sweep    = input.float(3.0,  "Min spike distance (pts)",      minval=0.5, step=0.25,  group="AMD Logic")
-int   search_win   = input.int  (10,   "Max Search Window (bars)",      minval=2,  maxval=30,   group="AMD Logic", tooltip="Max bars after CHoCH to find FVG")
-float fvg_atr_mult = input.float(0.5,  "Min FVG Gap (ATR Multiplier)",  minval=0.1, step=0.1,   group="AMD Logic")
+// ═══════════════════════════════════════════════════════════════════
+// SHARED
+// ═══════════════════════════════════════════════════════════════════
+atr_len    = input.int  (14,   "ATR Length",      minval=5,  maxval=50,   group="⚙️ Shared")
+rr_ratio   = input.float(2.0,  "Reward / Risk",   minval=0.5, step=0.5,   group="⚙️ Shared")
+show_zones = input.bool (true,  "SL/TP Zones",                             group="⚙️ Shared")
+show_mid   = input.bool (true,  "FVG midpoint",                            group="⚙️ Shared")
+use_ny     = input.bool (true,  "New York 08-17 EST",  group="⚙️ Sessions")
+use_lon    = input.bool (false, "London  03-12 EST",   group="⚙️ Sessions")
 
-// ══════════════════════════════════════════════════════
-// INPUTS — TRADE SETTINGS
-// ══════════════════════════════════════════════════════
-int   atr_len      = input.int  (14,   "ATR Length",                    minval=5,  maxval=50,   group="Trade Settings")
-float atr_sl_mult  = input.float(2.0,  "ATR SL Multiplier",             minval=0.5, step=0.25,  group="Trade Settings")
-float rr_ratio     = input.float(2.0,  "Reward-to-Risk Ratio",          minval=0.5, step=0.5,   group="Trade Settings")
-bool  show_accum   = input.bool (true, "Show Accumulation/Manipulation zones", group="Trade Settings")
-bool  show_zones   = input.bool (true, "Show SL/TP zones",               group="Trade Settings")
-bool  show_mid     = input.bool (true, "Show FVG midpoint line",         group="Trade Settings")
-
-// ══════════════════════════════════════════════════════
-// INPUTS — SESSIONS
-// ══════════════════════════════════════════════════════
-bool  use_ny_sess  = input.bool (true,  "New York Session  (08:00-17:00 EST)", group="Sessions")
-bool  use_lon_sess = input.bool (false, "London Session    (03:00-12:00 EST)", group="Sessions")
-bool  use_tok_sess = input.bool (false, "Tokyo Session     (19:00-04:00 EST)", group="Sessions")
-
-// ══════════════════════════════════════════════════════
-// INPUTS — ALERTS
-// ══════════════════════════════════════════════════════
-bool  alr_man      = input.bool (true, "Alert: Manipulation detected",  group="Alerts")
-bool  alr_fvg      = input.bool (true, "Alert: FVG identified",         group="Alerts")
-bool  alr_dist     = input.bool (true, "Alert: Distribution starts",    group="Alerts")
-bool  alr_tp       = input.bool (true, "Alert: TP reached",             group="Alerts")
-
-// ══════════════════════════════════════════════════════
-// COMPUTED HELPERS
-// ══════════════════════════════════════════════════════
 atr_val = ta.atr(atr_len)
+is_ny   = not na(time(timeframe.period, "0800-1700", "America/New_York"))
+is_lon  = not na(time(timeframe.period, "0300-1200", "Europe/London"))
+in_sess = (not use_ny and not use_lon) or (use_ny and is_ny) or (use_lon and is_lon)
 
-// Session filter — if none selected, allow all hours
-is_ny  = not na(time(timeframe.period, "0800-1700", "America/New_York"))
-is_lon = not na(time(timeframe.period, "0300-1200", "Europe/London"))
-is_tok = not na(time(timeframe.period, "1900-0400", "America/New_York"))
-any_sess = use_ny_sess or use_lon_sess or use_tok_sess
-in_session = not any_sess or (use_ny_sess and is_ny) or (use_lon_sess and is_lon) or (use_tok_sess and is_tok)
+// ═══════════════════════════════════════════════════════════════════
+// MODEL 1 — AMD + FVG  (PO3)
+// ═══════════════════════════════════════════════════════════════════
+enable_amd   = input.bool (true,   "▶ Sinais AMD + FVG",        group="M1 — AMD + FVG")
+acc_bars     = input.int  (30,     "Acumulação — Length",        minval=5,  maxval=100,  group="M1 — AMD + FVG")
+acc_pct      = input.float(0.05,   "Acumulação — Range %",       minval=0.01, step=0.01, group="M1 — AMD + FVG")
+man_sw       = input.float(3.0,    "Spike mínimo (pts)",         minval=0.5, step=0.25,  group="M1 — AMD + FVG")
+amd_sl_mult  = input.float(2.0,    "ATR × SL",                   minval=0.5, step=0.25,  group="M1 — AMD + FVG")
+amd_win      = input.int  (10,     "Janela FVG (bars)",          minval=2,  maxval=30,   group="M1 — AMD + FVG")
+amd_fmin     = input.float(0.5,    "FVG mín (ATR mult)",         minval=0.1, step=0.1,   group="M1 — AMD + FVG")
+show_acc_box = input.bool (true,   "Mostrar Accum/Manip",                                group="M1 — AMD + FVG")
 
-// Range tightness (% of price)
-r_hi          = ta.highest(high, acc_bars)
-r_lo          = ta.lowest (low,  acc_bars)
-acc_range_abs = close * acc_rng_pct / 100.0
-tight         = (r_hi - r_lo) <= acc_range_abs
-fvg_min_abs   = atr_val * fvg_atr_mult
+var int   A_st   = 0
+var float A_ahi  = na
+var float A_alo  = na
+var int   A_ast  = 0
+var int   A_mdir = 0
+var int   A_midx = 0
+var int   A_cidx = 0
+var float A_mext = na
+var float A_ftop = na
+var float A_fbot = na
+var float A_entr = na
+var float A_sl   = na
+var float A_tp   = na
+var bool  A_don  = false
+var bool  A_tph  = false
+var box   A_bacc = na
+var box   A_bman = na
+var box   A_bfvg = na
+var box   A_bdst = na
+var box   A_bsl  = na
+var box   A_btp  = na
+var line  A_lmid = na
+var line  A_lent = na
 
-// ══════════════════════════════════════════════════════
-// STATE MACHINE
-// 0=idle | 1=accumulating | 2=manipulation (multi-bar)
-// 3=post-CHoCH (find FVG) | 4=fvg-active (wait fill)
-// ══════════════════════════════════════════════════════
-var int   st          = 0
-var float acc_hi      = na
-var float acc_lo      = na
-var int   acc_st      = 0
-var int   man_dir     = 0     // -1=bearish spike (above) | 1=bullish spike (below)
-var int   man_idx     = 0
-var int   choch_idx   = 0
-var float man_extreme = na    // highest high (bear) or lowest low (bull) reached during manipulation
-var float ifvg_top    = na
-var float ifvg_bot    = na
-var float entry_lvl   = na
-var float sl_lvl      = na
-var float tp_lvl      = na
-var bool  dist_on     = false
-var bool  tp_hit      = false
-var box   b_acc       = na
-var box   b_man       = na
-var box   b_ifvg      = na
-var box   b_dist      = na
-var box   b_sl        = na
-var box   b_tp_zone   = na
-var line  l_mid       = na
-var line  l_entry     = na
+A_rhi = ta.highest(high, acc_bars)
+A_rlo = ta.lowest (low,  acc_bars)
+A_rng = close * acc_pct / 100.0
+A_tgt = (A_rhi - A_rlo) <= A_rng
+A_fmn = atr_val * amd_fmin
 
-// ══════════════════════════════════════════════════════
-// DAILY RESET
-// ══════════════════════════════════════════════════════
-if ta.change(time("D")) != 0 and st != 0
-    st      := 0
-    dist_on := false
-    tp_hit  := false
+if ta.change(time("D")) != 0 and A_st != 0
+    A_st  := 0
+    A_don := false
+    A_tph := false
 
-// ══════════════════════════════════════════════════════
-// STATE 0 → 1: IDLE → ACCUMULATING
-// Trigger when price consolidates tightly within session
-// ══════════════════════════════════════════════════════
-if st == 0 and tight and in_session
-    st     := 1
-    acc_hi := r_hi
-    acc_lo := r_lo
-    acc_st := bar_index - acc_bars + 1
-    b_acc  := box.new(acc_st, acc_hi, bar_index, acc_lo, border_color=show_accum ? color.new(#FFD700, 20) : color.new(color.white, 100), bgcolor=show_accum ? color.new(#FFD700, 82) : color.new(color.white, 100), border_width=1, text=show_accum ? "ACCUM" : "", text_color=show_accum ? color.new(#B8860B, 0) : color.new(color.white, 100), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
+if enable_amd
+    if A_st == 0 and A_tgt and in_sess
+        A_st   := 1
+        A_ahi  := A_rhi
+        A_alo  := A_rlo
+        A_ast  := bar_index - acc_bars + 1
+        A_bacc := box.new(A_ast, A_ahi, bar_index, A_alo,
+             border_color = show_acc_box ? color.new(#FFD700,20) : color.new(color.white,100),
+             bgcolor      = show_acc_box ? color.new(#FFD700,82) : color.new(color.white,100),
+             border_width = 1,
+             text         = show_acc_box ? "ACCUM" : "",
+             text_color   = show_acc_box ? color.new(#B8860B,0) : color.new(color.white,100),
+             text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
 
-// ══════════════════════════════════════════════════════
-// STATE 1: ACCUMULATING
-// Watch for a spike outside the range → begin manipulation tracking
-// ══════════════════════════════════════════════════════
-else if st == 1
-    box.set_right(b_acc, bar_index)
+    else if A_st == 1
+        box.set_right(A_bacc, bar_index)
+        if high >= A_ahi + man_sw
+            A_st   := 2
+            A_mdir := -1
+            A_midx := bar_index
+            A_mext := high
+            A_bman := box.new(bar_index, high, bar_index, A_ahi,
+                 border_color = show_acc_box ? color.new(#FF4444,10) : color.new(color.white,100),
+                 bgcolor      = show_acc_box ? color.new(#FF4444,72) : color.new(color.white,100),
+                 border_width=1, text=show_acc_box?"MANIP ▲":"",
+                 text_color   = show_acc_box ? color.new(#CC0000,0) : color.new(color.white,100),
+                 text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top)
+        else if low <= A_alo - man_sw
+            A_st   := 2
+            A_mdir := 1
+            A_midx := bar_index
+            A_mext := low
+            A_bman := box.new(bar_index, A_alo, bar_index, low,
+                 border_color = show_acc_box ? color.new(#FF4444,10) : color.new(color.white,100),
+                 bgcolor      = show_acc_box ? color.new(#FF4444,72) : color.new(color.white,100),
+                 border_width=1, text=show_acc_box?"MANIP ▼":"",
+                 text_color   = show_acc_box ? color.new(#CC0000,0) : color.new(color.white,100),
+                 text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
+        else if A_tgt
+            A_ahi := A_rhi
+            A_alo := A_rlo
+            box.set_top   (A_bacc, A_ahi)
+            box.set_bottom(A_bacc, A_alo)
+        else if (bar_index - A_ast) > acc_bars * 4
+            A_st := 0
+            box.delete(A_bacc)
 
-    // Bearish manipulation: any bar spikes ABOVE the range (stop hunt on buy-side)
-    if high >= acc_hi + man_sweep
-        st          := 2
-        man_dir     := -1
-        man_idx     := bar_index
-        man_extreme := high
-        b_man       := box.new(bar_index, high, bar_index, acc_hi, border_color=show_accum ? color.new(#FF4444, 10) : color.new(color.white, 100), bgcolor=show_accum ? color.new(#FF4444, 72) : color.new(color.white, 100), border_width=1, text=show_accum ? "MANIP ▲" : "", text_color=show_accum ? color.new(#CC0000, 0) : color.new(color.white, 100), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top)
-        if alr_man
-            alert("AMD | Bearish Manipulation — spike to " + str.tostring(high, "#.##"), alert.freq_once_per_bar)
+    else if A_st == 2
+        A_mext := A_mdir == -1 ? math.max(A_mext, high) : math.min(A_mext, low)
+        if A_mdir == -1
+            box.set_top(A_bman, A_mext)
+        else
+            box.set_bottom(A_bman, A_mext)
+        box.set_right(A_bman, bar_index)
+        chA = (A_mdir == -1 and close <= A_ahi) or (A_mdir == 1 and close >= A_alo)
+        if chA
+            A_st   := 3
+            A_cidx := bar_index
+        else if (bar_index - A_midx) > amd_win * 3
+            A_st := 0
 
-    // Bullish manipulation: any bar spikes BELOW the range (stop hunt on sell-side)
-    else if low <= acc_lo - man_sweep
-        st          := 2
-        man_dir     := 1
-        man_idx     := bar_index
-        man_extreme := low
-        b_man       := box.new(bar_index, acc_lo, bar_index, low, border_color=show_accum ? color.new(#FF4444, 10) : color.new(color.white, 100), bgcolor=show_accum ? color.new(#FF4444, 72) : color.new(color.white, 100), border_width=1, text=show_accum ? "MANIP ▼" : "", text_color=show_accum ? color.new(#CC0000, 0) : color.new(color.white, 100), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_bottom)
-        if alr_man
-            alert("AMD | Bullish Manipulation — spike to " + str.tostring(low, "#.##"), alert.freq_once_per_bar)
+    else if A_st == 3
+        box.set_right(A_bman, bar_index)
+        bsA = bar_index - A_cidx
+        if bsA >= 2 and bsA <= amd_win
+            if A_mdir == -1 and low[2] > high and (low[2] - high) >= A_fmn
+                A_st   := 4
+                A_don  := false
+                A_tph  := false
+                A_ftop := low[2]
+                A_fbot := high
+                A_bfvg := box.new(bar_index-2, A_ftop, bar_index+40, A_fbot,
+                     border_color=color.new(#FF8C00,0), bgcolor=color.new(#FF8C00,65),
+                     border_width=1, text="AMD FVG ▼",
+                     text_color=color.new(#FF8C00,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                if show_mid
+                    A_lmid := line.new(bar_index-2, (A_ftop+A_fbot)/2, bar_index+40, (A_ftop+A_fbot)/2,
+                         color=color.new(#FF8C00,0), style=line.style_dashed, width=1)
+            else if A_mdir == 1 and high[2] < low and (low - high[2]) >= A_fmn
+                A_st   := 4
+                A_don  := false
+                A_tph  := false
+                A_ftop := low
+                A_fbot := high[2]
+                A_bfvg := box.new(bar_index-2, A_ftop, bar_index+40, A_fbot,
+                     border_color=color.new(#FF8C00,0), bgcolor=color.new(#FF8C00,65),
+                     border_width=1, text="AMD FVG ▲",
+                     text_color=color.new(#FF8C00,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                if show_mid
+                    A_lmid := line.new(bar_index-2, (A_ftop+A_fbot)/2, bar_index+40, (A_ftop+A_fbot)/2,
+                         color=color.new(#FF8C00,0), style=line.style_dashed, width=1)
+        else if bsA > amd_win
+            A_st := 0
 
-    else if tight
-        // Still consolidating — update boundaries
-        acc_hi := r_hi
-        acc_lo := r_lo
-        box.set_top   (b_acc, acc_hi)
-        box.set_bottom(b_acc, acc_lo)
-
-    else if (bar_index - acc_st) > acc_bars * 4
-        // Range expanded without a spike — reset
-        st := 0
-        box.delete(b_acc)
-
-// ══════════════════════════════════════════════════════
-// STATE 2: MANIPULATION (multi-bar tracking)
-// Track the most extreme point. Transition to State 3 on CHoCH:
-// CHoCH = price CLOSES BACK INSIDE the accumulation range.
-// This is the key change vs. v4: spike + close can be on SEPARATE candles.
-// ══════════════════════════════════════════════════════
-else if st == 2
-    // Expand manipulation box to track the full spike extent
-    if man_dir == -1
-        man_extreme := math.max(man_extreme, high)
-        box.set_top(b_man, man_extreme)
-    else
-        man_extreme := math.min(man_extreme, low)
-        box.set_bottom(b_man, man_extreme)
-    box.set_right(b_man, bar_index)
-
-    // CHoCH: price closes back inside the accumulation range
-    choch = (man_dir == -1 and close <= acc_hi) or (man_dir == 1 and close >= acc_lo)
-
-    if choch
-        st        := 3
-        choch_idx := bar_index
-
-    // Timeout: spike never reversed — false signal, reset
-    else if (bar_index - man_idx) > search_win * 3
-        st := 0
-
-// ══════════════════════════════════════════════════════
-// STATE 3: POST-CHoCH — search for FVG
-// The FVG (3-bar imbalance) forms during the reversal from the spike.
-// Look within search_win bars of the CHoCH confirmation bar.
-// ══════════════════════════════════════════════════════
-else if st == 3
-    box.set_right(b_man, bar_index)
-    bars_since = bar_index - choch_idx
-
-    if bars_since >= 2 and bars_since <= search_win
-        // Bearish FVG: gap between bar[2] low and current bar high
-        // bar[2].low > bar[0].high means a downward gap — bearish imbalance
-        if man_dir == -1 and low[2] > high and (low[2] - high) >= fvg_min_abs
-            st       := 4
-            dist_on  := false
-            tp_hit   := false
-            ifvg_top := low[2]
-            ifvg_bot := high
-            ifvg_mid  = (ifvg_top + ifvg_bot) / 2
-            b_ifvg   := box.new(bar_index - 2, ifvg_top, bar_index + 40, ifvg_bot, border_color=color.new(#FF8C00, 0), bgcolor=color.new(#FF8C00, 65), border_width=1, text="FVG ▼", text_color=color.new(#FF8C00, 0), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
-            if show_mid
-                l_mid := line.new(bar_index - 2, ifvg_mid, bar_index + 40, ifvg_mid, color=color.new(#FF8C00, 0), style=line.style_dashed, width=1)
-            if alr_fvg
-                alert("AMD | Bearish FVG: " + str.tostring(ifvg_top, "#.##") + " → " + str.tostring(ifvg_bot, "#.##"), alert.freq_once_per_bar)
-
-        // Bullish FVG: gap between bar[2] high and current bar low
-        // bar[2].high < bar[0].low means an upward gap — bullish imbalance
-        else if man_dir == 1 and high[2] < low and (low - high[2]) >= fvg_min_abs
-            st       := 4
-            dist_on  := false
-            tp_hit   := false
-            ifvg_top := low
-            ifvg_bot := high[2]
-            ifvg_mid  = (ifvg_top + ifvg_bot) / 2
-            b_ifvg   := box.new(bar_index - 2, ifvg_top, bar_index + 40, ifvg_bot, border_color=color.new(#FF8C00, 0), bgcolor=color.new(#FF8C00, 65), border_width=1, text="FVG ▲", text_color=color.new(#FF8C00, 0), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
-            if show_mid
-                l_mid := line.new(bar_index - 2, ifvg_mid, bar_index + 40, ifvg_mid, color=color.new(#FF8C00, 0), style=line.style_dashed, width=1)
-            if alr_fvg
-                alert("AMD | Bullish FVG: " + str.tostring(ifvg_bot, "#.##") + " → " + str.tostring(ifvg_top, "#.##"), alert.freq_once_per_bar)
-
-    else if bars_since > search_win
-        // FVG not found in time — reset cycle
-        st := 0
-
-// ══════════════════════════════════════════════════════
-// STATE 4: FVG ACTIVE — wait for price to fill it
-// Fill = price enters the FVG zone → this is the ENTRY
-// Entry is at FVG edge nearest to the incoming price (conservative)
-// SL: ATR × multiplier beyond entry
-// TP: SL × RR ratio in the distribution direction
-// ══════════════════════════════════════════════════════
-else if st == 4
-    box.set_right(b_ifvg, bar_index + 5)
-    if show_mid and not na(l_mid)
-        line.set_x2(l_mid, bar_index + 5)
-
-    // Price enters the FVG zone
-    fvg_filled = man_dir == -1 ? (high >= ifvg_bot and low <= ifvg_top) : (low <= ifvg_top and high >= ifvg_bot)
-
-    // ── Distribution start on first FVG fill ─────────
-    if fvg_filled and not dist_on
-        dist_on   := true
-        sl_size    = atr_val * atr_sl_mult
-        // Entry at the FVG edge nearest to incoming price
-        entry_lvl := man_dir == -1 ? ifvg_bot : ifvg_top
-        sl_lvl    := man_dir == -1 ? entry_lvl + sl_size : entry_lvl - sl_size
-        tp_lvl    := man_dir == -1 ? entry_lvl - sl_size * rr_ratio : entry_lvl + sl_size * rr_ratio
-
-        b_dist := box.new(bar_index, high, bar_index, low, border_color=color.new(#26a69a, 30), bgcolor=color.new(#26a69a, 88), border_width=1, text="DIST  0 pts", text_color=color.new(#26a69a, 0), text_size=size.small, text_halign=text.align_left, text_valign=man_dir == -1 ? text.align_bottom : text.align_top)
-
-        if show_zones
-            // SL zone — purple, above entry (bear) / below entry (bull)
-            b_sl      := box.new(bar_index, man_dir == -1 ? sl_lvl : entry_lvl, bar_index + 60, man_dir == -1 ? entry_lvl : sl_lvl, border_color=color.new(#9C27B0, 10), bgcolor=color.new(#9C27B0, 68), border_width=1, text="SL  " + str.tostring(math.round(sl_size), "#") + " pts", text_color=color.new(#CE93D8, 0), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
-            // TP zone — green, below entry (bear) / above entry (bull)
-            b_tp_zone := box.new(bar_index, man_dir == -1 ? entry_lvl : tp_lvl, bar_index + 60, man_dir == -1 ? tp_lvl : entry_lvl, border_color=color.new(#00E676, 10), bgcolor=color.new(#00E676, 68), border_width=1, text="TP  " + str.tostring(math.round(sl_size * rr_ratio), "#") + " pts", text_color=color.new(#69F0AE, 0), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
-            // Entry line — white
-            l_entry   := line.new(bar_index, entry_lvl, bar_index + 60, entry_lvl, color=color.new(color.white, 20), style=line.style_solid, width=1)
-
-        if alr_dist
-            alert("AMD | " + (man_dir == -1 ? "BEARISH" : "BULLISH") + " — Entry " + str.tostring(entry_lvl, "#.##") + " | SL " + str.tostring(math.round(sl_size), "#") + " pts | TP " + str.tostring(math.round(sl_size * rr_ratio), "#") + " pts", alert.freq_once_per_bar)
-
-    // ── Extend distribution box ───────────────────────
-    if dist_on
-        box.set_right (b_dist, bar_index)
-        box.set_top   (b_dist, math.max(box.get_top   (b_dist), high))
-        box.set_bottom(b_dist, math.min(box.get_bottom(b_dist), low ))
-        dist_pts = math.round(math.abs(box.get_top(b_dist) - box.get_bottom(b_dist)))
-        box.set_text  (b_dist, "DIST  " + str.tostring(dist_pts) + " pts")
-
-        // TP reached
-        if not tp_hit
-            tp_reached = man_dir == -1 ? low <= tp_lvl : high >= tp_lvl
-            if tp_reached
-                tp_hit := true
-                label.new(bar_index, tp_lvl, "TP HIT  " + str.tostring(dist_pts) + " pts", yloc=yloc.price, style=man_dir == -1 ? label.style_label_up : label.style_label_down, color=color.new(#26a69a, 0), textcolor=color.white, size=size.normal)
-                if show_zones and not na(b_tp_zone)
-                    box.set_right(b_tp_zone, bar_index)
-                    if not na(l_entry)
-                        line.set_x2(l_entry, bar_index)
-                if alr_tp
-                    alert("AMD | TP reached — " + str.tostring(dist_pts) + " pts captured!", alert.freq_once_per_bar)
-
-    // ── Invalidation: close beyond FVG = trade failed ─
-    if dist_on
-        invalidated = man_dir == -1 ? close > ifvg_top : close < ifvg_bot
-        if invalidated
-            st      := 0
-            dist_on := false
-            tp_hit  := false
+    else if A_st == 4
+        box.set_right(A_bfvg, bar_index + 5)
+        if show_mid and not na(A_lmid)
+            line.set_x2(A_lmid, bar_index + 5)
+        fA = A_mdir == -1 ? (high >= A_fbot and low <= A_ftop) : (low <= A_ftop and high >= A_fbot)
+        if fA and not A_don
+            A_don  := true
+            sl_a    = atr_val * amd_sl_mult
+            A_entr := A_mdir == -1 ? A_fbot : A_ftop
+            A_sl   := A_mdir == -1 ? A_entr + sl_a : A_entr - sl_a
+            A_tp   := A_mdir == -1 ? A_entr - sl_a * rr_ratio : A_entr + sl_a * rr_ratio
+            A_bdst := box.new(bar_index, high, bar_index, low,
+                 border_color=color.new(#26a69a,30), bgcolor=color.new(#26a69a,88),
+                 border_width=1, text="AMD  0 pts", text_color=color.new(#26a69a,0),
+                 text_size=size.small, text_halign=text.align_left,
+                 text_valign=A_mdir == -1 ? text.align_bottom : text.align_top)
             if show_zones
-                if not na(b_sl)
-                    box.set_right(b_sl, bar_index)
-                if not na(b_tp_zone)
-                    box.set_right(b_tp_zone, bar_index)
-                if not na(l_entry)
-                    line.set_x2(l_entry, bar_index)
+                A_bsl := box.new(bar_index, A_mdir==-1?A_sl:A_entr, bar_index+60, A_mdir==-1?A_entr:A_sl,
+                     border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
+                     border_width=1, text="SL  "+str.tostring(math.round(sl_a))+" pts",
+                     text_color=color.new(#CE93D8,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                A_btp := box.new(bar_index, A_mdir==-1?A_entr:A_tp, bar_index+60, A_mdir==-1?A_tp:A_entr,
+                     border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
+                     border_width=1, text="TP  "+str.tostring(math.round(sl_a*rr_ratio))+" pts",
+                     text_color=color.new(#69F0AE,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                A_lent := line.new(bar_index, A_entr, bar_index+60, A_entr,
+                     color=color.new(color.white,20), style=line.style_solid, width=1)
+            alert("AMD+FVG | "+(A_mdir==-1?"SHORT":"LONG")+" — Entry "+str.tostring(A_entr,"#.##")+" | SL "+str.tostring(math.round(sl_a))+" pts | TP "+str.tostring(math.round(sl_a*rr_ratio))+" pts", alert.freq_once_per_bar)
+        if A_don
+            box.set_right (A_bdst, bar_index)
+            box.set_top   (A_bdst, math.max(box.get_top(A_bdst), high))
+            box.set_bottom(A_bdst, math.min(box.get_bottom(A_bdst), low))
+            dp = math.round(math.abs(box.get_top(A_bdst) - box.get_bottom(A_bdst)))
+            box.set_text(A_bdst, "AMD  "+str.tostring(dp)+" pts")
+            if not A_tph
+                if (A_mdir == -1 and low <= A_tp) or (A_mdir == 1 and high >= A_tp)
+                    A_tph := true
+                    label.new(bar_index, A_tp, "AMD TP ✓  "+str.tostring(dp)+" pts",
+                         yloc=yloc.price,
+                         style=A_mdir==-1?label.style_label_up:label.style_label_down,
+                         color=color.new(#26a69a,0), textcolor=color.white, size=size.normal)
+                    if show_zones
+                        if not na(A_btp)
+                            box.set_right(A_btp, bar_index)
+                        if not na(A_lent)
+                            line.set_x2(A_lent, bar_index)
+                    alert("AMD+FVG | TP alcançado — "+str.tostring(dp)+" pts", alert.freq_once_per_bar)
+        if A_don
+            if (A_mdir == -1 and close > A_ftop) or (A_mdir == 1 and close < A_fbot)
+                A_st  := 0
+                A_don := false
+                A_tph := false
+                if show_zones
+                    if not na(A_bsl)
+                        box.set_right(A_bsl, bar_index)
+                    if not na(A_btp)
+                        box.set_right(A_btp, bar_index)
+                    if not na(A_lent)
+                        line.set_x2(A_lent, bar_index)
+        if not A_don and (bar_index - A_cidx) > amd_win * 6
+            A_st := 0
 
-    // ── Timeout: FVG never filled ─────────────────────
-    if not dist_on and (bar_index - choch_idx) > search_win * 6
-        st := 0
+// ═══════════════════════════════════════════════════════════════════
+// MODEL 2 — BOS + FVG
+// Break of Structure confirmado → pullback cria FVG → retest = entrada
+// ═══════════════════════════════════════════════════════════════════
+enable_bos  = input.bool (true,  "▶ Sinais BOS + FVG",      group="M2 — BOS + FVG")
+bos_swing   = input.int  (10,   "Swing lookback (bars)",    minval=3, maxval=50,   group="M2 — BOS + FVG")
+bos_win     = input.int  (20,   "Janela FVG (bars)",        minval=3, maxval=60,   group="M2 — BOS + FVG")
+bos_sl_mult = input.float(1.5,  "ATR × SL",                 minval=0.5, step=0.25, group="M2 — BOS + FVG")
+bos_fmin    = input.float(0.3,  "FVG mín (ATR mult)",       minval=0.1, step=0.1,  group="M2 — BOS + FVG")
+
+var int   B_st   = 0
+var int   B_dir  = 0
+var int   B_bidx = 0
+var float B_ftop = na
+var float B_fbot = na
+var float B_entr = na
+var float B_sl   = na
+var float B_tp   = na
+var bool  B_don  = false
+var bool  B_tph  = false
+var box   B_bfvg = na
+var box   B_bsl  = na
+var box   B_btp  = na
+var line  B_lmid = na
+var line  B_lent = na
+
+B_shi = ta.highest(high[1], bos_swing)
+B_slo = ta.lowest (low[1],  bos_swing)
+B_fmn = atr_val * bos_fmin
+
+if enable_bos and in_sess
+    if B_st == 0
+        if close > B_shi
+            B_st   := 1
+            B_dir  := 1
+            B_bidx := bar_index
+            B_don  := false
+            B_tph  := false
+        else if close < B_slo
+            B_st   := 1
+            B_dir  := -1
+            B_bidx := bar_index
+            B_don  := false
+            B_tph  := false
+
+    else if B_st == 1
+        bsB = bar_index - B_bidx
+        if bsB >= 2 and bsB <= bos_win
+            if B_dir == 1 and high[2] < low and (low - high[2]) >= B_fmn
+                B_st   := 2
+                B_ftop := low
+                B_fbot := high[2]
+                B_bfvg := box.new(bar_index-2, B_ftop, bar_index+40, B_fbot,
+                     border_color=color.new(#00BCD4,0), bgcolor=color.new(#00BCD4,72),
+                     border_width=1, text="BOS FVG ▲",
+                     text_color=color.new(#00BCD4,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                if show_mid
+                    B_lmid := line.new(bar_index-2, (B_ftop+B_fbot)/2, bar_index+40, (B_ftop+B_fbot)/2,
+                         color=color.new(#00BCD4,30), style=line.style_dashed, width=1)
+            else if B_dir == -1 and low[2] > high and (low[2] - high) >= B_fmn
+                B_st   := 2
+                B_ftop := low[2]
+                B_fbot := high
+                B_bfvg := box.new(bar_index-2, B_ftop, bar_index+40, B_fbot,
+                     border_color=color.new(#00BCD4,0), bgcolor=color.new(#00BCD4,72),
+                     border_width=1, text="BOS FVG ▼",
+                     text_color=color.new(#00BCD4,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                if show_mid
+                    B_lmid := line.new(bar_index-2, (B_ftop+B_fbot)/2, bar_index+40, (B_ftop+B_fbot)/2,
+                         color=color.new(#00BCD4,30), style=line.style_dashed, width=1)
+        else if bsB > bos_win
+            B_st := 0
+
+    else if B_st == 2
+        box.set_right(B_bfvg, bar_index + 5)
+        if show_mid and not na(B_lmid)
+            line.set_x2(B_lmid, bar_index + 5)
+        fB = B_dir == 1 ? (low <= B_ftop and high >= B_fbot) : (high >= B_fbot and low <= B_ftop)
+        if fB and not B_don
+            B_don  := true
+            sl_b    = atr_val * bos_sl_mult
+            B_entr := B_dir == 1 ? B_fbot : B_ftop
+            B_sl   := B_dir == 1 ? B_entr - sl_b : B_entr + sl_b
+            B_tp   := B_dir == 1 ? B_entr + sl_b * rr_ratio : B_entr - sl_b * rr_ratio
+            label.new(bar_index, B_dir==1?low:high, "BOS+FVG "+(B_dir==1?"▲":"▼"),
+                 yloc=yloc.price,
+                 style=B_dir==1?label.style_label_up:label.style_label_down,
+                 color=color.new(#00BCD4,0), textcolor=color.white, size=size.small)
+            if show_zones
+                B_bsl := box.new(bar_index, B_dir==1?B_sl:B_entr, bar_index+60, B_dir==1?B_entr:B_sl,
+                     border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
+                     border_width=1, text="SL  "+str.tostring(math.round(sl_b))+" pts",
+                     text_color=color.new(#CE93D8,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                B_btp := box.new(bar_index, B_dir==1?B_entr:B_tp, bar_index+60, B_dir==1?B_tp:B_entr,
+                     border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
+                     border_width=1, text="TP  "+str.tostring(math.round(sl_b*rr_ratio))+" pts",
+                     text_color=color.new(#69F0AE,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                B_lent := line.new(bar_index, B_entr, bar_index+60, B_entr,
+                     color=color.new(color.white,20), style=line.style_solid, width=1)
+            alert("BOS+FVG | "+(B_dir==1?"LONG":"SHORT")+" — Entry "+str.tostring(B_entr,"#.##")+" | SL "+str.tostring(math.round(sl_b))+" pts | TP "+str.tostring(math.round(sl_b*rr_ratio))+" pts", alert.freq_once_per_bar)
+        if B_don and not B_tph
+            if (B_dir == 1 and high >= B_tp) or (B_dir == -1 and low <= B_tp)
+                B_tph := true
+                label.new(bar_index, B_tp, "BOS TP ✓",
+                     yloc=yloc.price,
+                     style=B_dir==1?label.style_label_down:label.style_label_up,
+                     color=color.new(#26a69a,0), textcolor=color.white, size=size.small)
+                if show_zones
+                    if not na(B_btp)
+                        box.set_right(B_btp, bar_index)
+                    if not na(B_lent)
+                        line.set_x2(B_lent, bar_index)
+                B_st  := 0
+                B_don := false
+        if B_don
+            if (B_dir == 1 and close < B_fbot) or (B_dir == -1 and close > B_ftop)
+                B_st  := 0
+                B_don := false
+                B_tph := false
+                if show_zones
+                    if not na(B_bsl)
+                        box.set_right(B_bsl, bar_index)
+                    if not na(B_btp)
+                        box.set_right(B_btp, bar_index)
+                    if not na(B_lent)
+                        line.set_x2(B_lent, bar_index)
+
+// ═══════════════════════════════════════════════════════════════════
+// MODEL 3 — LIQUIDITY + IFVG
+// Sweep de liquidez → IFVG formado na recuperação → retest = entrada
+// ═══════════════════════════════════════════════════════════════════
+enable_lq   = input.bool (true,  "▶ Sinais Liquidity + IFVG", group="M3 — Liquidity + IFVG")
+lq_lookback = input.int  (20,   "LQ sweep lookback (bars)",   minval=5, maxval=100,  group="M3 — Liquidity + IFVG")
+lq_win      = input.int  (15,   "Janela IFVG (bars)",         minval=2, maxval=40,   group="M3 — Liquidity + IFVG")
+lq_sl_mult  = input.float(1.5,  "ATR × SL",                   minval=0.5, step=0.25, group="M3 — Liquidity + IFVG")
+lq_fmin     = input.float(0.3,  "IFVG mín (ATR mult)",        minval=0.1, step=0.1,  group="M3 — Liquidity + IFVG")
+
+var int   L_st   = 0
+var int   L_dir  = 0
+var int   L_sidx = 0
+var float L_ftop = na
+var float L_fbot = na
+var float L_entr = na
+var float L_sl   = na
+var float L_tp   = na
+var bool  L_don  = false
+var bool  L_tph  = false
+var box   L_bfvg = na
+var box   L_bsl  = na
+var box   L_btp  = na
+var line  L_lmid = na
+var line  L_lent = na
+
+L_phi = ta.highest(high[1], lq_lookback)
+L_plo = ta.lowest (low[1],  lq_lookback)
+L_fmn = atr_val * lq_fmin
+
+lq_bull = low < L_plo and close > L_plo
+lq_bear = high > L_phi and close < L_phi
+
+if enable_lq and in_sess
+    if L_st == 0
+        if lq_bull
+            L_st   := 1
+            L_dir  := 1
+            L_sidx := bar_index
+            L_don  := false
+            L_tph  := false
+        else if lq_bear
+            L_st   := 1
+            L_dir  := -1
+            L_sidx := bar_index
+            L_don  := false
+            L_tph  := false
+
+    else if L_st == 1
+        bsL = bar_index - L_sidx
+        if bsL >= 2 and bsL <= lq_win
+            if L_dir == 1 and high[2] < low and (low - high[2]) >= L_fmn
+                L_st   := 2
+                L_ftop := low
+                L_fbot := high[2]
+                L_bfvg := box.new(bar_index-2, L_ftop, bar_index+40, L_fbot,
+                     border_color=color.new(#E040FB,0), bgcolor=color.new(#E040FB,72),
+                     border_width=1, text="LQ IFVG ▲",
+                     text_color=color.new(#E040FB,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                if show_mid
+                    L_lmid := line.new(bar_index-2, (L_ftop+L_fbot)/2, bar_index+40, (L_ftop+L_fbot)/2,
+                         color=color.new(#E040FB,30), style=line.style_dashed, width=1)
+            else if L_dir == -1 and low[2] > high and (low[2] - high) >= L_fmn
+                L_st   := 2
+                L_ftop := low[2]
+                L_fbot := high
+                L_bfvg := box.new(bar_index-2, L_ftop, bar_index+40, L_fbot,
+                     border_color=color.new(#E040FB,0), bgcolor=color.new(#E040FB,72),
+                     border_width=1, text="LQ IFVG ▼",
+                     text_color=color.new(#E040FB,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                if show_mid
+                    L_lmid := line.new(bar_index-2, (L_ftop+L_fbot)/2, bar_index+40, (L_ftop+L_fbot)/2,
+                         color=color.new(#E040FB,30), style=line.style_dashed, width=1)
+        else if bsL > lq_win
+            L_st := 0
+
+    else if L_st == 2
+        box.set_right(L_bfvg, bar_index + 5)
+        if show_mid and not na(L_lmid)
+            line.set_x2(L_lmid, bar_index + 5)
+        fL = L_dir == 1 ? (low <= L_ftop and high >= L_fbot) : (high >= L_fbot and low <= L_ftop)
+        if fL and not L_don
+            L_don  := true
+            sl_l    = atr_val * lq_sl_mult
+            L_entr := L_dir == 1 ? L_fbot : L_ftop
+            L_sl   := L_dir == 1 ? L_entr - sl_l : L_entr + sl_l
+            L_tp   := L_dir == 1 ? L_entr + sl_l * rr_ratio : L_entr - sl_l * rr_ratio
+            label.new(bar_index, L_dir==1?low:high, "LQ+IFVG "+(L_dir==1?"▲":"▼"),
+                 yloc=yloc.price,
+                 style=L_dir==1?label.style_label_up:label.style_label_down,
+                 color=color.new(#E040FB,0), textcolor=color.white, size=size.small)
+            if show_zones
+                L_bsl := box.new(bar_index, L_dir==1?L_sl:L_entr, bar_index+60, L_dir==1?L_entr:L_sl,
+                     border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
+                     border_width=1, text="SL  "+str.tostring(math.round(sl_l))+" pts",
+                     text_color=color.new(#CE93D8,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                L_btp := box.new(bar_index, L_dir==1?L_entr:L_tp, bar_index+60, L_dir==1?L_tp:L_entr,
+                     border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
+                     border_width=1, text="TP  "+str.tostring(math.round(sl_l*rr_ratio))+" pts",
+                     text_color=color.new(#69F0AE,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                L_lent := line.new(bar_index, L_entr, bar_index+60, L_entr,
+                     color=color.new(color.white,20), style=line.style_solid, width=1)
+            alert("LQ+IFVG | "+(L_dir==1?"LONG":"SHORT")+" — Entry "+str.tostring(L_entr,"#.##")+" | SL "+str.tostring(math.round(sl_l))+" pts | TP "+str.tostring(math.round(sl_l*rr_ratio))+" pts", alert.freq_once_per_bar)
+        if L_don and not L_tph
+            if (L_dir == 1 and high >= L_tp) or (L_dir == -1 and low <= L_tp)
+                L_tph := true
+                label.new(bar_index, L_tp, "LQ TP ✓",
+                     yloc=yloc.price,
+                     style=L_dir==1?label.style_label_down:label.style_label_up,
+                     color=color.new(#26a69a,0), textcolor=color.white, size=size.small)
+                if show_zones
+                    if not na(L_btp)
+                        box.set_right(L_btp, bar_index)
+                    if not na(L_lent)
+                        line.set_x2(L_lent, bar_index)
+                L_st  := 0
+                L_don := false
+        if L_don
+            if (L_dir == 1 and close < L_fbot) or (L_dir == -1 and close > L_ftop)
+                L_st  := 0
+                L_don := false
+                L_tph := false
+                if show_zones
+                    if not na(L_bsl)
+                        box.set_right(L_bsl, bar_index)
+                    if not na(L_btp)
+                        box.set_right(L_btp, bar_index)
+                    if not na(L_lent)
+                        line.set_x2(L_lent, bar_index)
+
+// ═══════════════════════════════════════════════════════════════════
+// MODEL 4 — ORDERBLOCK
+// Identifica último candle oposto antes de impulso → OB zone
+// Entrada quando preço retorna à zona com wick/rejeição
+// ═══════════════════════════════════════════════════════════════════
+enable_ob   = input.bool (true,  "▶ Sinais Orderblock",       group="M4 — Orderblock")
+ob_imp_mult = input.float(1.2,   "Impulso mínimo (ATR mult)", minval=0.5, step=0.1,  group="M4 — Orderblock")
+ob_sl_mult  = input.float(1.0,   "ATR × SL",                  minval=0.3, step=0.1,  group="M4 — Orderblock")
+ob_timeout  = input.int  (50,    "Timeout (bars)",             minval=10, maxval=200, group="M4 — Orderblock")
+
+var int   O_st      = 0
+var int   O_dir     = 0
+var int   O_idx     = 0
+var float O_ob_top  = na
+var float O_ob_bot  = na
+var float O_entr    = na
+var float O_sl      = na
+var float O_tp      = na
+var bool  O_don     = false
+var bool  O_tph     = false
+var float O_lb_top  = na
+var float O_lb_bot  = na
+var float O_ls_top  = na
+var float O_ls_bot  = na
+var box   O_bob     = na
+var box   O_bsl     = na
+var box   O_btp     = na
+var line  O_lent    = na
+
+bull_body = close - open
+bear_body = open  - close
+bull_imp  = close > open and bull_body >= atr_val * ob_imp_mult
+bear_imp  = close < open and bear_body >= atr_val * ob_imp_mult
+
+if close > open
+    O_lb_top := close
+    O_lb_bot := open
+else if close < open
+    O_ls_top := open
+    O_ls_bot := close
+
+if enable_ob and in_sess
+    if O_st == 0
+        if bull_imp and not na(O_ls_top)
+            O_st     := 1
+            O_dir    := 1
+            O_idx    := bar_index
+            O_ob_top := O_ls_top
+            O_ob_bot := O_ls_bot
+            O_don    := false
+            O_tph    := false
+            O_bob    := box.new(bar_index-1, O_ob_top, bar_index+ob_timeout, O_ob_bot,
+                 border_color=color.new(#76FF03,0), bgcolor=color.new(#76FF03,75),
+                 border_width=1, text="OB ▲",
+                 text_color=color.new(#76FF03,0), text_size=size.tiny,
+                 text_halign=text.align_right, text_valign=text.align_center)
+        else if bear_imp and not na(O_lb_top)
+            O_st     := 1
+            O_dir    := -1
+            O_idx    := bar_index
+            O_ob_top := O_lb_top
+            O_ob_bot := O_lb_bot
+            O_don    := false
+            O_tph    := false
+            O_bob    := box.new(bar_index-1, O_ob_top, bar_index+ob_timeout, O_ob_bot,
+                 border_color=color.new(#FF5252,0), bgcolor=color.new(#FF5252,75),
+                 border_width=1, text="OB ▼",
+                 text_color=color.new(#FF5252,0), text_size=size.tiny,
+                 text_halign=text.align_right, text_valign=text.align_center)
+
+    else if O_st == 1
+        box.set_right(O_bob, bar_index + 5)
+        in_ob = low <= O_ob_top and high >= O_ob_bot
+        wick_ok = O_dir == 1 ? (high - math.max(open,close)) < (math.min(open,close) - low) * 0.5 : (math.min(open,close) - low) < (high - math.max(open,close)) * 0.5
+        if in_ob and not O_don
+            O_don  := true
+            sl_o    = atr_val * ob_sl_mult
+            O_entr := O_dir == 1 ? O_ob_top : O_ob_bot
+            O_sl   := O_dir == 1 ? O_ob_bot - sl_o : O_ob_top + sl_o
+            O_tp   := O_dir == 1 ? O_entr + math.abs(O_entr - O_sl) * rr_ratio : O_entr - math.abs(O_entr - O_sl) * rr_ratio
+            label.new(bar_index, O_dir==1?low:high, "OB "+(O_dir==1?"▲":"▼"),
+                 yloc=yloc.price,
+                 style=O_dir==1?label.style_label_up:label.style_label_down,
+                 color=O_dir==1?color.new(#76FF03,0):color.new(#FF5252,0),
+                 textcolor=color.white, size=size.small)
+            if show_zones
+                sl_size_o = math.abs(O_entr - O_sl)
+                O_bsl := box.new(bar_index, O_dir==1?O_sl:O_entr, bar_index+60, O_dir==1?O_entr:O_sl,
+                     border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
+                     border_width=1, text="SL  "+str.tostring(math.round(sl_size_o))+" pts",
+                     text_color=color.new(#CE93D8,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                O_btp := box.new(bar_index, O_dir==1?O_entr:O_tp, bar_index+60, O_dir==1?O_tp:O_entr,
+                     border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
+                     border_width=1, text="TP  "+str.tostring(math.round(math.abs(O_entr-O_sl)*rr_ratio))+" pts",
+                     text_color=color.new(#69F0AE,0), text_size=size.tiny,
+                     text_halign=text.align_right, text_valign=text.align_center)
+                O_lent := line.new(bar_index, O_entr, bar_index+60, O_entr,
+                     color=color.new(color.white,20), style=line.style_solid, width=1)
+            sl_sz_o = math.abs(O_entr - O_sl)
+            alert("OB | "+(O_dir==1?"LONG":"SHORT")+" — Entry "+str.tostring(O_entr,"#.##")+" | SL "+str.tostring(math.round(sl_sz_o))+" pts | TP "+str.tostring(math.round(sl_sz_o*rr_ratio))+" pts", alert.freq_once_per_bar)
+        if O_don and not O_tph
+            if (O_dir == 1 and high >= O_tp) or (O_dir == -1 and low <= O_tp)
+                O_tph := true
+                label.new(bar_index, O_tp, "OB TP ✓",
+                     yloc=yloc.price,
+                     style=O_dir==1?label.style_label_down:label.style_label_up,
+                     color=color.new(#26a69a,0), textcolor=color.white, size=size.small)
+                if show_zones
+                    if not na(O_btp)
+                        box.set_right(O_btp, bar_index)
+                    if not na(O_lent)
+                        line.set_x2(O_lent, bar_index)
+                O_st  := 0
+                O_don := false
+        if O_don
+            if (O_dir == 1 and close < O_ob_bot) or (O_dir == -1 and close > O_ob_top)
+                O_st  := 0
+                O_don := false
+                O_tph := false
+                if show_zones
+                    if not na(O_bsl)
+                        box.set_right(O_bsl, bar_index)
+                    if not na(O_btp)
+                        box.set_right(O_btp, bar_index)
+                    if not na(O_lent)
+                        line.set_x2(O_lent, bar_index)
+        if (bar_index - O_idx) > ob_timeout
+            O_st  := 0
+            O_don := false
+            if not na(O_bob)
+                box.set_right(O_bob, bar_index)
