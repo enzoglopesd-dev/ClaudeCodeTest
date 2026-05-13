@@ -212,28 +212,23 @@ if enable_amd
             if not A_tph
                 if (A_mdir == -1 and low <= A_tp) or (A_mdir == 1 and high >= A_tp)
                     A_tph := true
+                    A_st  := 0
+                    A_don := false
                     label.new(bar_index, A_tp, "AMD TP ✓  "+str.tostring(dp)+" pts",
                          yloc=yloc.price,
                          style=A_mdir==-1?label.style_label_up:label.style_label_down,
                          color=color.new(#26a69a,0), textcolor=color.white, size=size.normal)
-                    if show_zones
-                        if not na(A_btp)
-                            box.set_right(A_btp, bar_index)
-                        if not na(A_lent)
-                            line.set_x2(A_lent, bar_index)
                     alert("AMD+FVG | TP alcançado — "+str.tostring(dp)+" pts", alert.freq_once_per_bar)
         if A_don
-            if (A_mdir == -1 and close > A_ftop) or (A_mdir == 1 and close < A_fbot)
+            a_sl_hit = A_mdir == -1 ? high >= A_sl : low <= A_sl
+            if a_sl_hit
                 A_st  := 0
                 A_don := false
                 A_tph := false
-                if show_zones
-                    if not na(A_bsl)
-                        box.set_right(A_bsl, bar_index)
-                    if not na(A_btp)
-                        box.set_right(A_btp, bar_index)
-                    if not na(A_lent)
-                        line.set_x2(A_lent, bar_index)
+                label.new(bar_index, A_sl, "AMD SL ✗",
+                     yloc=yloc.price,
+                     style=A_mdir==-1?label.style_label_down:label.style_label_up,
+                     color=color.new(#FF4444,0), textcolor=color.white, size=size.small)
         if not A_don and (bar_index - A_cidx) > amd_win * 6
             A_st := 0
 
@@ -353,29 +348,22 @@ if enable_bos and in_sess
         if B_don and not B_tph
             if (B_dir == 1 and high >= B_tp) or (B_dir == -1 and low <= B_tp)
                 B_tph := true
+                B_st  := 0
+                B_don := false
                 label.new(bar_index, B_tp, "BOS TP ✓",
                      yloc=yloc.price,
                      style=B_dir==1?label.style_label_down:label.style_label_up,
                      color=color.new(#26a69a,0), textcolor=color.white, size=size.small)
-                if show_zones
-                    if not na(B_btp)
-                        box.set_right(B_btp, bar_index)
-                    if not na(B_lent)
-                        line.set_x2(B_lent, bar_index)
-                B_st  := 0
-                B_don := false
         if B_don
-            if (B_dir == 1 and close < B_fbot) or (B_dir == -1 and close > B_ftop)
+            b_sl_hit = B_dir == 1 ? low <= B_sl : high >= B_sl
+            if b_sl_hit
                 B_st  := 0
                 B_don := false
                 B_tph := false
-                if show_zones
-                    if not na(B_bsl)
-                        box.set_right(B_bsl, bar_index)
-                    if not na(B_btp)
-                        box.set_right(B_btp, bar_index)
-                    if not na(B_lent)
-                        line.set_x2(B_lent, bar_index)
+                label.new(bar_index, B_sl, "BOS SL ✗",
+                     yloc=yloc.price,
+                     style=B_dir==1?label.style_label_up:label.style_label_down,
+                     color=color.new(#FF4444,0), textcolor=color.white, size=size.small)
 
 // ═══════════════════════════════════════════════════════════════════
 // MODEL 3 — LIQUIDITY + IFVG
@@ -495,29 +483,22 @@ if enable_lq and in_sess
         if L_don and not L_tph
             if (L_dir == 1 and high >= L_tp) or (L_dir == -1 and low <= L_tp)
                 L_tph := true
+                L_st  := 0
+                L_don := false
                 label.new(bar_index, L_tp, "LQ TP ✓",
                      yloc=yloc.price,
                      style=L_dir==1?label.style_label_down:label.style_label_up,
                      color=color.new(#26a69a,0), textcolor=color.white, size=size.small)
-                if show_zones
-                    if not na(L_btp)
-                        box.set_right(L_btp, bar_index)
-                    if not na(L_lent)
-                        line.set_x2(L_lent, bar_index)
-                L_st  := 0
-                L_don := false
         if L_don
-            if (L_dir == 1 and close < L_fbot) or (L_dir == -1 and close > L_ftop)
+            l_sl_hit = L_dir == 1 ? low <= L_sl : high >= L_sl
+            if l_sl_hit
                 L_st  := 0
                 L_don := false
                 L_tph := false
-                if show_zones
-                    if not na(L_bsl)
-                        box.set_right(L_bsl, bar_index)
-                    if not na(L_btp)
-                        box.set_right(L_btp, bar_index)
-                    if not na(L_lent)
-                        line.set_x2(L_lent, bar_index)
+                label.new(bar_index, L_sl, "LQ SL ✗",
+                     yloc=yloc.price,
+                     style=L_dir==1?label.style_label_up:label.style_label_down,
+                     color=color.new(#FF4444,0), textcolor=color.white, size=size.small)
 
 // ═══════════════════════════════════════════════════════════════════
 // MODEL 4 — ORDERBLOCK
@@ -633,29 +614,22 @@ if enable_ob and in_sess
         if O_don and not O_tph
             if (O_dir == 1 and high >= O_tp) or (O_dir == -1 and low <= O_tp)
                 O_tph := true
+                O_st  := 0
+                O_don := false
                 label.new(bar_index, O_tp, "OB TP ✓",
                      yloc=yloc.price,
                      style=O_dir==1?label.style_label_down:label.style_label_up,
                      color=color.new(#26a69a,0), textcolor=color.white, size=size.small)
-                if show_zones
-                    if not na(O_btp)
-                        box.set_right(O_btp, bar_index)
-                    if not na(O_lent)
-                        line.set_x2(O_lent, bar_index)
-                O_st  := 0
-                O_don := false
         if O_don
-            if (O_dir == 1 and close < O_ob_bot) or (O_dir == -1 and close > O_ob_top)
+            o_sl_hit = O_dir == 1 ? low <= O_sl : high >= O_sl
+            if o_sl_hit
                 O_st  := 0
                 O_don := false
                 O_tph := false
-                if show_zones
-                    if not na(O_bsl)
-                        box.set_right(O_bsl, bar_index)
-                    if not na(O_btp)
-                        box.set_right(O_btp, bar_index)
-                    if not na(O_lent)
-                        line.set_x2(O_lent, bar_index)
+                label.new(bar_index, O_sl, "OB SL ✗",
+                     yloc=yloc.price,
+                     style=O_dir==1?label.style_label_up:label.style_label_down,
+                     color=color.new(#FF4444,0), textcolor=color.white, size=size.small)
         if (bar_index - O_idx) > ob_timeout
             O_st  := 0
             O_don := false
