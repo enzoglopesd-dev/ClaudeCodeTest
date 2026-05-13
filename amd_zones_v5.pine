@@ -183,17 +183,17 @@ if enable_amd
                  text_size=size.small, text_halign=text.align_left,
                  text_valign=A_mdir == -1 ? text.align_bottom : text.align_top)
             if show_zones
-                A_bsl := box.new(bar_index, A_mdir==-1?A_sl:A_entr, bar_index+10, A_mdir==-1?A_entr:A_sl,
+                A_bsl := box.new(bar_index, A_mdir==-1?A_sl:A_entr, bar_index, A_mdir==-1?A_entr:A_sl,
                      border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
                      border_width=1, text="SL  "+str.tostring(math.round(sl_a))+" pts",
                      text_color=color.new(#CE93D8,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                A_btp := box.new(bar_index, A_mdir==-1?A_entr:A_tp, bar_index+10, A_mdir==-1?A_tp:A_entr,
+                A_btp := box.new(bar_index, A_mdir==-1?A_entr:A_tp, bar_index, A_mdir==-1?A_tp:A_entr,
                      border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
                      border_width=1, text="TP  "+str.tostring(math.round(sl_a*rr_ratio))+" pts",
                      text_color=color.new(#69F0AE,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                A_lent := line.new(bar_index, A_entr, bar_index+10, A_entr,
+                A_lent := line.new(bar_index, A_entr, bar_index, A_entr,
                      color=color.new(color.white,20), style=line.style_solid, width=1)
             alert("AMD+FVG | "+(A_mdir==-1?"SHORT":"LONG")+" — Entry "+str.tostring(A_entr,"#.##")+" | SL "+str.tostring(math.round(sl_a))+" pts | TP "+str.tostring(math.round(sl_a*rr_ratio))+" pts", alert.freq_once_per_bar)
         if A_don
@@ -202,6 +202,13 @@ if enable_amd
             box.set_bottom(A_bdst, math.min(box.get_bottom(A_bdst), low))
             dp = math.round(math.abs(box.get_top(A_bdst) - box.get_bottom(A_bdst)))
             box.set_text(A_bdst, "AMD  "+str.tostring(dp)+" pts")
+            if show_zones
+                if not na(A_bsl)
+                    box.set_right(A_bsl, bar_index)
+                if not na(A_btp)
+                    box.set_right(A_btp, bar_index)
+                if not na(A_lent)
+                    line.set_x2(A_lent, bar_index)
             if not A_tph
                 if (A_mdir == -1 and low <= A_tp) or (A_mdir == 1 and high >= A_tp)
                     A_tph := true
@@ -323,19 +330,26 @@ if enable_bos and in_sess
                  style=B_dir==1?label.style_label_up:label.style_label_down,
                  color=color.new(#00BCD4,0), textcolor=color.white, size=size.small)
             if show_zones
-                B_bsl := box.new(bar_index, B_dir==1?B_sl:B_entr, bar_index+10, B_dir==1?B_entr:B_sl,
+                B_bsl := box.new(bar_index, B_dir==1?B_sl:B_entr, bar_index, B_dir==1?B_entr:B_sl,
                      border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
                      border_width=1, text="SL  "+str.tostring(math.round(sl_b))+" pts",
                      text_color=color.new(#CE93D8,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                B_btp := box.new(bar_index, B_dir==1?B_entr:B_tp, bar_index+10, B_dir==1?B_tp:B_entr,
+                B_btp := box.new(bar_index, B_dir==1?B_entr:B_tp, bar_index, B_dir==1?B_tp:B_entr,
                      border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
                      border_width=1, text="TP  "+str.tostring(math.round(sl_b*rr_ratio))+" pts",
                      text_color=color.new(#69F0AE,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                B_lent := line.new(bar_index, B_entr, bar_index+10, B_entr,
+                B_lent := line.new(bar_index, B_entr, bar_index, B_entr,
                      color=color.new(color.white,20), style=line.style_solid, width=1)
             alert("BOS+FVG | "+(B_dir==1?"LONG":"SHORT")+" — Entry "+str.tostring(B_entr,"#.##")+" | SL "+str.tostring(math.round(sl_b))+" pts | TP "+str.tostring(math.round(sl_b*rr_ratio))+" pts", alert.freq_once_per_bar)
+        if B_don and show_zones
+            if not na(B_bsl)
+                box.set_right(B_bsl, bar_index)
+            if not na(B_btp)
+                box.set_right(B_btp, bar_index)
+            if not na(B_lent)
+                line.set_x2(B_lent, bar_index)
         if B_don and not B_tph
             if (B_dir == 1 and high >= B_tp) or (B_dir == -1 and low <= B_tp)
                 B_tph := true
@@ -458,19 +472,26 @@ if enable_lq and in_sess
                  style=L_dir==1?label.style_label_up:label.style_label_down,
                  color=color.new(#E040FB,0), textcolor=color.white, size=size.small)
             if show_zones
-                L_bsl := box.new(bar_index, L_dir==1?L_sl:L_entr, bar_index+10, L_dir==1?L_entr:L_sl,
+                L_bsl := box.new(bar_index, L_dir==1?L_sl:L_entr, bar_index, L_dir==1?L_entr:L_sl,
                      border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
                      border_width=1, text="SL  "+str.tostring(math.round(sl_l))+" pts",
                      text_color=color.new(#CE93D8,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                L_btp := box.new(bar_index, L_dir==1?L_entr:L_tp, bar_index+10, L_dir==1?L_tp:L_entr,
+                L_btp := box.new(bar_index, L_dir==1?L_entr:L_tp, bar_index, L_dir==1?L_tp:L_entr,
                      border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
                      border_width=1, text="TP  "+str.tostring(math.round(sl_l*rr_ratio))+" pts",
                      text_color=color.new(#69F0AE,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                L_lent := line.new(bar_index, L_entr, bar_index+10, L_entr,
+                L_lent := line.new(bar_index, L_entr, bar_index, L_entr,
                      color=color.new(color.white,20), style=line.style_solid, width=1)
             alert("LQ+IFVG | "+(L_dir==1?"LONG":"SHORT")+" — Entry "+str.tostring(L_entr,"#.##")+" | SL "+str.tostring(math.round(sl_l))+" pts | TP "+str.tostring(math.round(sl_l*rr_ratio))+" pts", alert.freq_once_per_bar)
+        if L_don and show_zones
+            if not na(L_bsl)
+                box.set_right(L_bsl, bar_index)
+            if not na(L_btp)
+                box.set_right(L_btp, bar_index)
+            if not na(L_lent)
+                line.set_x2(L_lent, bar_index)
         if L_don and not L_tph
             if (L_dir == 1 and high >= L_tp) or (L_dir == -1 and low <= L_tp)
                 L_tph := true
@@ -588,20 +609,27 @@ if enable_ob and in_sess
                  textcolor=color.white, size=size.small)
             if show_zones
                 sl_size_o = math.abs(O_entr - O_sl)
-                O_bsl := box.new(bar_index, O_dir==1?O_sl:O_entr, bar_index+10, O_dir==1?O_entr:O_sl,
+                O_bsl := box.new(bar_index, O_dir==1?O_sl:O_entr, bar_index, O_dir==1?O_entr:O_sl,
                      border_color=color.new(#9C27B0,10), bgcolor=color.new(#9C27B0,68),
                      border_width=1, text="SL  "+str.tostring(math.round(sl_size_o))+" pts",
                      text_color=color.new(#CE93D8,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                O_btp := box.new(bar_index, O_dir==1?O_entr:O_tp, bar_index+10, O_dir==1?O_tp:O_entr,
+                O_btp := box.new(bar_index, O_dir==1?O_entr:O_tp, bar_index, O_dir==1?O_tp:O_entr,
                      border_color=color.new(#00E676,10), bgcolor=color.new(#00E676,68),
                      border_width=1, text="TP  "+str.tostring(math.round(math.abs(O_entr-O_sl)*rr_ratio))+" pts",
                      text_color=color.new(#69F0AE,0), text_size=size.tiny,
                      text_halign=text.align_right, text_valign=text.align_center)
-                O_lent := line.new(bar_index, O_entr, bar_index+10, O_entr,
+                O_lent := line.new(bar_index, O_entr, bar_index, O_entr,
                      color=color.new(color.white,20), style=line.style_solid, width=1)
             sl_sz_o = math.abs(O_entr - O_sl)
             alert("OB | "+(O_dir==1?"LONG":"SHORT")+" — Entry "+str.tostring(O_entr,"#.##")+" | SL "+str.tostring(math.round(sl_sz_o))+" pts | TP "+str.tostring(math.round(sl_sz_o*rr_ratio))+" pts", alert.freq_once_per_bar)
+        if O_don and show_zones
+            if not na(O_bsl)
+                box.set_right(O_bsl, bar_index)
+            if not na(O_btp)
+                box.set_right(O_btp, bar_index)
+            if not na(O_lent)
+                line.set_x2(O_lent, bar_index)
         if O_don and not O_tph
             if (O_dir == 1 and high >= O_tp) or (O_dir == -1 and low <= O_tp)
                 O_tph := true
