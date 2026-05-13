@@ -630,8 +630,7 @@ if enable_ob and in_sess
                      yloc=yloc.price,
                      style=O_dir==1?label.style_label_up:label.style_label_down,
                      color=color.new(#FF4444,0), textcolor=color.white, size=size.small)
-        if (bar_index - O_idx) > ob_timeout
+        if not O_don and (bar_index - O_idx) > ob_timeout
             O_st  := 0
-            O_don := false
             if not na(O_bob)
                 box.set_right(O_bob, bar_index)
